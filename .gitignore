@@ -122,6 +122,8 @@ TODO
 checkpoint
 run.sh
 data/
+log/
+ckpt/
 
 # swap file
 *.swp

@@ -48,13 +48,13 @@ def collect_text_batch(batch, mode):
        e.g. [txt1 <list>,txt2 <list>,...] '''
 
     # Bucketed batch should be [[txt1, txt2,...]]
-    if type(batch[0][0]) is list:
+    if type(batch[0][0]) is list or type(batch[0][0]) is tuple:
         batch = batch[0]
     # Half batch size if input to long
     if len(batch[0]) > HALF_BATCHSIZE_TEXT_LEN and mode == 'train':
         batch = batch[:len(batch)//2]
     # Read batch
-    text = [torch.LongTensor(b) for b in batch]
+    text = [torch.LongTensor(b[1]) for b in batch]
     # Zero-padding
     text = pad_sequence(text, batch_first=True)
 
@@ -68,6 +68,8 @@ def create_dataset(tokenizer, ascending, name, path, bucketing, batch_size,
     # Recognize corpus
     if name.lower() == "librispeech":
         from corpus.librispeech import LibriDataset as Dataset
+    if name.lower() == "dlhlp":
+        from corpus.dlhlp import DlhlpDataset as Dataset
     else:
         raise NotImplementedError
 
@@ -109,6 +111,8 @@ def create_textset(tokenizer, train_split, dev_split, name, path, bucketing, bat
     # Recognize corpus
     if name.lower() == "librispeech":
         from corpus.librispeech import LibriTextDataset as Dataset
+    if name.lower() == "dlhlp":
+        from corpus.dlhlp import DlhlpDataset as Dataset
     else:
         raise NotImplementedError
 
