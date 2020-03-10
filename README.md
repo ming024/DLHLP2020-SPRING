@@ -57,4 +57,4 @@ python3 format.py result/decode_test_output.csv kaggle.csv
 # Experiments
 lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
 :---------:|:----------------:|:------------------:|:----------:|:----------:|:----------------------------:|:---------------------------:|:----------------:
-0.3        |0.                |0.                  |5           |12001         |2.9526                          |9.2290                    |
+0.3        |0.                |0.                  |5           |12001       |2.9526                        |9.2290                        |1.754
