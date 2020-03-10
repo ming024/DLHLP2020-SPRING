@@ -13,7 +13,7 @@ data:
 
 hparas:                                   # Experiment hyper-parameters
   valid_step: 250
-  max_step: 100000
+  max_step: 20000
   optimizer: 'Adam'
   lr: 0.0001
   eps: 0.00000001
@@ -26,5 +26,3 @@ model:                                     # Model architecture
   dim: 1024
   n_layers: 2
   dropout: 0.5
-  
-  

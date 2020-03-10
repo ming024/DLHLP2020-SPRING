@@ -25,6 +25,7 @@ class Solver(BaseSolver):
         self.config['data']['audio'] = self.src_config['data']['audio']
         self.config['data']['text'] = self.src_config['data']['text']
         self.config['model'] = self.src_config['model']
+        self.config['hparas'] = self.src_config['hparas']
 
         # Output file
         self.output_file = str(self.ckpdir)+'_{}_{}.csv'

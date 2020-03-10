@@ -1,6 +1,6 @@
 data:
   corpus:                                 
-    name: 'Slhlp'                         # Specify corpus
+    name: 'dlhlp'                         # Specify corpus
     path: 'data'                          # Path to raw LibriSpeech dataset
     train_split: ['train']                # Name of data splits to be used as training set
     dev_split: ['dev']                    # Name of data splits to be used as validation set
@@ -32,7 +32,7 @@ hparas:                                   # Experiment hyper-parameters
   curriculum: 0
 
 model:                                    # Model architecture
-  ctc_weight: 0.0                         # Weight for CTC loss
+  ctc_weight: 0.5                         # Weight for CTC loss
   encoder:
     prenet: 'vgg'                         # 'vgg'/'cnn'/''
     # vgg: True                             # 4x reduction on time feature extraction
