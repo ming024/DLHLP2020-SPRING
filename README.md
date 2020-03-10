@@ -43,7 +43,7 @@ python3 format.py result/decode_test_output.csv kaggle.csv
 # Useful Parameters
 
 ## config/dlhlp/asr.yaml: 
-**max\_step**: can be larger than 12001. I guess 20001 whould be proper.
+**max\_step**: 12001 is enough when CTC loss is used.
 
 **ctc\_weight**: maybe 0.5?
 
@@ -57,4 +57,5 @@ python3 format.py result/decode_test_output.csv kaggle.csv
 # Experiments
 lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
 :---------:|:----------------:|:------------------:|:----------:|:----------:|:----------------------------:|:---------------------------:|:----------------:
-0.3        |0.                |0.                  |5           |12001       |2.9526                        |9.2290                        |1.754
+0.3|0.|0.|5|12001|2.9526|9.2290|1.754
+0.3|0.5|0.|5|12001|1.8733|6.3137|1.082
