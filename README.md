@@ -43,18 +43,18 @@ python3 format.py result/decode_test_output.csv kaggle.csv
 # Useful Parameters
 
 ## config/dlhlp/asr.yaml: 
-max\_step: can be larger than 12001. I guess 20001 whould be proper.
+**max\_step**: can be larger than 12001. I guess 20001 whould be proper.
 
-ctc\_weight: maybe 0.5?
+**ctc\_weight**: maybe 0.5?
 
 ## config/dlhlp/decode.yaml
-beam\_size: greater better
+**beam\_size**: greater better
 
-lm\_weight: not sure?
+**lm\_weight**: not sure?
 
-ctc\_weight: can only be 0. or 1.
+**ctc\_weight**: can only be 0. or 1.
 
 # Experiments
-lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps **|** **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
-:---------:|:----------------:|:------------------:|:----------:|:------------:|:------------------------------:|:---------------------------:|:----------------:
+lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
+:---------:|:----------------:|:------------------:|:----------:|:----------:|:----------------------------:|:---------------------------:|:----------------:
 0.3        |0.                |0.                  |5           |12001         |2.9526                          |9.2290                        |
