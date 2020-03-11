@@ -120,10 +120,13 @@ runs
 save
 TODO
 checkpoint
-run.sh
 data/
 log/
 ckpt/
+
+# hp search
+config/dlhlp/*ctc*.yaml
+*.sh
 
 # swap file
 *.swp
