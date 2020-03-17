@@ -1,6 +1,6 @@
 # Most of the parameters will be imported from the training config
 src:
-  ckpt: 'ckpt/asr_sd0/best_att.pth'
+  ckpt: 'ckpt/asr_ctc_0._sd0/best_att.pth'
   config: 'config/dlhlp/asr.yaml'
 data:
   corpus:
@@ -13,5 +13,5 @@ decode:
   max_len_ratio: 0.30
   lm_path: 'ckpt/lm_dlhlp_sd0/best_ppx.pth'
   lm_config: 'config/dlhlp/lm.yaml'
-  lm_weight: 0.3
+  lm_weight: 0.5
   ctc_weight: 0.

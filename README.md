@@ -40,25 +40,31 @@ python3 eval.py --file result/decode_dev_output.csv
 python3 format.py result/decode_test_output.csv kaggle.csv
 ```
 
+## Post-Process for CTC output
+```bash
+python3 remove_redundancy.py result/decode_test_output.csv result/decode_test_output.csv
+```
+
 # Useful Parameters
 
 ## config/dlhlp/asr.yaml: 
 **max\_step**: 12001 is enough when CTC loss is used.
 
-**ctc\_weight**: maybe 0.5?
+**ctc\_weight**: no obvious trend, see the table.
 
 ## config/dlhlp/decode.yaml
-**beam\_size**: greater better
+**beam\_size**: greater better.
 
-**lm\_weight**: not sure?
+**lm\_weight**: 0.5 or 0.6 best.
 
 **ctc\_weight**: can only be 0. or 1.
 
 # Experiments
+## Hyper-Parameter Search
 lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
 :---------:|:----------------:|:------------------:|:----------:|:----------:|:----------------------------:|:---------------------------:|:----------------:
-0.3|0.|0.|5|12001|2.9526|9.2290|1.754
 0.2|0.2|0.|5|12001|1.9519|6.4261|
+0.3|0.|0.|5|2.9526|9.2290|1.754
 0.3|0.2|0.|5|12001|1.8465|6.0594|
 0.4|0.2|0.|5|12001|1.8061|5.8850|1.128
 0.5|0.2|0.|5|12001|2.0416|5.9126|
@@ -81,6 +87,7 @@ lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | *
 0.4|0.5|0.|5|12001|1.7965|6.0639|
 0.5|0.5|0.|5|12001|1.7292|5.8467|1.038
 0.6|0.5|0.|5|12001|1.6838|5.6423|1.004
+0.6|0.5|0.|15|12001|1.6838|5.6308|
 0.7|0.5|0.|5|12001|1.6646|5.5716|1.218
 0.2|0.6|0.|5|12001|2.0172|6.6447|
 0.3|0.6|0.|5|12001|1.9312|6.3307|
@@ -94,3 +101,15 @@ lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | *
 0.5|0.7|0.|5|12001|1.8232|5.9312|
 0.6|0.7|0.|5|12001|1.8664|5.8569|
 0.7|0.7|0.|5|12001|1.9448|5.9521|
+
+## For Report
+label | lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
+:----:|:----------:|:----------------:|:------------------:|:----------:|:----------------------------:|:---------------------------:|:----------------:
+P1(seq-to-seq)|0.|0.|0.|5|3.4286|11.0433|2.088
+P2(CTC loss)|0.|0.5|0.|5|2.1502|7.3091|1.242
+P3(CTC decoding)|0.|0.5|1.|5|2.7122|9.4719|1.502
+P4(language model)|0.5|0.|0.|5|3.0082|8.977|
+P5(beam size)|0.5|0.|0.|2||||
+P5(beam size)|0.5|0.|0.|10||||
+P5(beam size)|0.5|0.|0.|20||||
+P5(beam size)|0.5|0.|0.|50||||
