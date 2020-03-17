@@ -27,7 +27,7 @@ python3 main.py --config config/dlhlp/decode.yaml --test --njobs 8
 
 ## Post-Process CTC Outputs
 ```bash
-TODO
+python3 remove_redundancy.py result/decode_dev_output.csv result/decode_dev_output.csv
 ```
 
 ## Evaluate
@@ -38,11 +38,6 @@ python3 eval.py --file result/decode_dev_output.csv
 ## Post-Process into Kaggle Format
 ```bash
 python3 format.py result/decode_test_output.csv kaggle.csv
-```
-
-## Post-Process for CTC output
-```bash
-python3 remove_redundancy.py result/decode_test_output.csv result/decode_test_output.csv
 ```
 
 # Useful Parameters
@@ -63,8 +58,8 @@ python3 remove_redundancy.py result/decode_test_output.csv result/decode_test_ou
 ## Hyper-Parameter Search
 lm\_weight | loss ctc\_weight | decode ctc\_weight | beam\_size | asr\_steps | **Dev. Char Error Rate(\%)** | **Dev. Word Error Rate(\%)** | **Kaggle Score**
 :---------:|:----------------:|:------------------:|:----------:|:----------:|:----------------------------:|:---------------------------:|:----------------:
-0.2|0.2|0.|5|12001|1.9519|6.4261|
 0.3|0.|0.|5|2.9526|9.2290|1.754
+0.2|0.2|0.|5|12001|1.9519|6.4261|
 0.3|0.2|0.|5|12001|1.8465|6.0594|
 0.4|0.2|0.|5|12001|1.8061|5.8850|1.128
 0.5|0.2|0.|5|12001|2.0416|5.9126|
