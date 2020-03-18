@@ -5,4 +5,4 @@ wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download
 tar zxvf HW1-data.tar.gz --no-same-owner > log && rm log
 
 # Create data dir & move the dataset
-mkdir data && mv DLHLP data
+mkdir data_dir && mv DLHLP data_dir
