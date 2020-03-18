@@ -1,6 +1,6 @@
 # Most of the parameters will be imported from the training config
 src:
-  ckpt: 'best_att.pth'
+  ckpt: 'ckpt/asr_sd0/best_att.pth'
   config: 'config/dlhlp/asr.yaml'
 data:
   corpus:
