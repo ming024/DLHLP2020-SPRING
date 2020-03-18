@@ -1,7 +1,7 @@
 data:
   corpus:                                 
     name: 'dlhlp'                         # Specify corpus
-    path: 'data'                          # Path to raw LibriSpeech dataset
+    path: 'data_dir'                          # Path to raw LibriSpeech dataset
     train_split: ['train']                # Name of data splits to be used as training set
     dev_split: ['dev']                    # Name of data splits to be used as validation set
     bucketing: True                       # Enable/Disable bucketing 
@@ -17,7 +17,7 @@ data:
     delta_window_size: 2
   text:
     mode: 'character'                     # 'character'/'word'/'subword'
-    vocab_file: 'data/vocab.txt'
+    vocab_file: 'vocab.txt'
 
 hparas:                                   # Experiment hyper-parameters
   valid_step: 500

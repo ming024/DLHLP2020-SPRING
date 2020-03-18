@@ -2,14 +2,14 @@ data:
   corpus:                                 # Pass to dataloader
     # The following depends on corpus
     name: 'Dlhlp'                         # Specify corpus
-    path: 'data'
+    path: 'data_dir'
     train_split: ['train']                # Official LM src
     dev_split: ['dev']
     bucketing: True
     batch_size: 32
   text:
     mode: 'character'                     # 'character'/'word'/'subword'
-    vocab_file: 'data/vocab.txt'
+    vocab_file: 'vocab.txt'
 
 hparas:                                   # Experiment hyper-parameters
   valid_step: 250
