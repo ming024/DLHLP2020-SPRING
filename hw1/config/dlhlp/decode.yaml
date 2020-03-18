@@ -11,7 +11,7 @@ decode:
   beam_size: 5
   min_len_ratio: 0.01
   max_len_ratio: 0.30
-  lm_path: 'best_ppx.pth'
+  lm_path: 'ckpt/lm_sd0/best_ppx.pth'
   lm_config: 'config/dlhlp/lm.yaml'
   lm_weight: 0.6
   ctc_weight: 0.
