@@ -1,5 +1,10 @@
 # Usage
 
+## Get Dataset
+```bash
+bash get_dataset.sh
+```
+
 ## Prepare Vocab-Count File
 ```bash
 python3 util/generate_vocab_file.py --input_file data_dir/text-data.txt --mode character --output_file vocab.txt
