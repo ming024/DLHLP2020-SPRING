@@ -2,7 +2,7 @@
 
 ## Prepare Vocab-Count File
 ```bash
-python3 util/generate_vocab_file.py --input_file data/text-data.txt --mode character --output_file data/vocab.txt
+python3 util/generate_vocab_file.py --input_file data_dir/text-data.txt --mode character --output_file vocab.txt
 ```
 
 ## Train ASR
@@ -48,11 +48,11 @@ python3 format.py result/decode_test_output.csv kaggle.csv
 **ctc\_weight**: no obvious trend, see the table.
 
 ## config/dlhlp/decode.yaml
-**beam\_size**: greater better.
+**beam\_size**: 5 is enough.
 
 **lm\_weight**: 0.5 or 0.6 best.
 
-**ctc\_weight**: can only be 0. or 1.
+**ctc\_weight**: can only be 0. or 1., 0. better.
 
 # Experiments
 ## Hyper-Parameter Search
