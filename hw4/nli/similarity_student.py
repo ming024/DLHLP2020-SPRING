@@ -283,7 +283,7 @@ def AnisotropyAdjustedIntraSentenceSimilarity_function():
        cos = Anisotropy(samples,i,version="intra-sentence-sim") 
        IntraSentenceSimilarity_cos = IntraSentenceSimilarity(samples,i) 
        record += [(i,IntraSentenceSimilarity_cos - cos)]
-    plt.plot([x[0] for x in record], [y[1] for y in record], "o-",label="pretrained Model" )
+    plt.plot([x[0] for x in record], [y[1] for y in record], "o-", color='purple', label="pretrained Model" )
     
     #Finetuned version    
     record = []  
@@ -293,7 +293,7 @@ def AnisotropyAdjustedIntraSentenceSimilarity_function():
        cos = Anisotropy(samples,i,version="intra-sentence-sim") 
        IntraSentenceSimilarity_cos = IntraSentenceSimilarity(samples,i) 
        record += [(i,IntraSentenceSimilarity_cos - cos)]
-    plt.plot([x[0] for x in record], [y[1] for y in record], "o-",label="finetuned Model" )
+    plt.plot([x[0] for x in record], [y[1] for y in record], "o-", color='g', label="finetuned Model" )
     plt.legend(loc='upper right')
     plt.savefig("picture/Anistropy-adjusted-Intra-sentence-similarity.png")
     print("finish Anistropy-adjusted-Intra-sentence-similarity!")
@@ -340,7 +340,7 @@ def MaximumExplainableVariance_function():
     for i in range(0,13):
         layer_MEV = MEV("pretrained",i)
         record += [(i,layer_MEV)]
-    plt.plot([x[0] for x in record], [y[1] for y in record], "o-",label="pretrained Model" )
+    plt.plot([x[0] for x in record], [y[1] for y in record], "o-", color='purple', label="pretrained Model" )
     
     #Finetuned version
     record = []  
@@ -349,7 +349,7 @@ def MaximumExplainableVariance_function():
     for i in range(0, 13):
         layer_MEV = MEV("finetune",i)
         record += [(i,layer_MEV)]
-    plt.plot([x[0] for x in record], [y[1] for y in record], "o-",label="finetuned Model" )
+    plt.plot([x[0] for x in record], [y[1] for y in record], "o-", color='g', label="finetuned Model" )
     plt.legend(loc='upper right')
     plt.savefig("picture/Maximum-explainable-variance.png")
     print("finish Maximum-explainable-variance!")
@@ -366,7 +366,7 @@ def AnisotropyAdjustedMEV_function():
         layer_MEV = MEV("pretrained",i)
         mean_MEV = Anisotropy(samples,i,version="MEV")
         record += [(i,layer_MEV- mean_MEV)]
-    plt.plot([x[0] for x in record], [y[1] for y in record], "o-",label="pretrained Model" )
+    plt.plot([x[0] for x in record], [y[1] for y in record], "o-", color='purple', label="pretrained Model" )
     
     #finetune version
     record = []  
@@ -376,7 +376,7 @@ def AnisotropyAdjustedMEV_function():
         layer_MEV = MEV("finetune",i)
         mean_MEV = Anisotropy(samples,i,version="MEV")
         record += [(i,layer_MEV-mean_MEV)]
-    plt.plot([x[0] for x in record], [y[1] for y in record], "o-",label="finetuned Model" )
+    plt.plot([x[0] for x in record], [y[1] for y in record], "o-", color='g', label="finetuned Model" )
     plt.legend(loc='upper right')
     plt.savefig("picture/Adjusted-Maximum-explainable-variance.png")
     print("finish Adjusted Maximum-explainable-variance!")
