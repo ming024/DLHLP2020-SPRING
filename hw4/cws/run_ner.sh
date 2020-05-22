@@ -1,0 +1,14 @@
+python3 run_ner.py --data_dir ../dataset/CWS_dlhlp-master/ \
+    --model_type bert \
+    --model_name_or_path bert-base-chinese \
+    --labels ../dataset/CWS_dlhlp-master/labels.txt \
+    --output_dir ../output/cws \
+    --cache_dir ../dataset \
+    --num_train_epochs 3 \
+    --per_gpu_train_batch_size 16 \
+    --per_gpu_eval_batch_size 16 \
+    --warmup_steps 500 \
+    --do_train \
+    --do_eval \
+    --evaluate_during_training \
+    --overwrite_output_dir \
