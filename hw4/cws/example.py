@@ -7,7 +7,7 @@ import pdb
 tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 config = BertConfig.from_pretrained('config.json')
-model = BertForTokenClassification.from_pretrained('my_cws_bert.pt', config=config).to(device)
+model = BertForTokenClassification.from_pretrained('my_cws_bert.pt', config=config).to(device).eval()
 
 
 
@@ -37,7 +37,7 @@ def seg(sentence):
         if paraphrase_results[i] == 2:
             res.append(sentence[i-length:i+1])
             length = 0
-
+    print(''.join(res) == sentence)
     print(' '.join(res), '\n')
     return ','.join(res) + '\n'
 

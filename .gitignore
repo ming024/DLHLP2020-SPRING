@@ -125,7 +125,14 @@ hw1/log/
 hw1/ckpt/
 hw1/result/*
 *.pth
-*.csv
+hw1/*.csv
+hw4/dataset/
+hw4/output/
+hw4/cws/*.pt
+hw4/nli/finetune/
+hw4/nli/pretrained/
+hw4/nli/runs/
+hw4/nli/*.p
 
 # hp search
 config/dlhlp/*ctc*.yaml

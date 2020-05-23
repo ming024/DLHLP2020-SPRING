@@ -89,7 +89,7 @@ def Anisotropy_function(version):
 # Question 2
 def Anisotropy(data,layer_index,version):
     
-    if version == "self-sim" or "intra-sentence-sim":
+    if version == "self-sim" or version == "intra-sentence-sim":
         x_layer = preprocessing(data,layer_index)
         # calculate anisotropy
         average_cos = []
@@ -307,12 +307,19 @@ def AnisotropyAdjustedIntraSentenceSimilarity_function():
 def MEV(function,layer_index):
     data = pk.load(open(function+"/layer_index_"+str(layer_index)+"_data.p",'rb'))
     total_MEV = []
+    
     for key in tqdm(list(data.keys())[:500]):
         same_word_embeddings=data[key]
         matrix=np.stack(same_word_embeddings,axis=0)
         """
         Todo: do PCA n_components=1, and return each word 's variance_explained_ratio of pca
         """
+        pca = PCA(n_components=1)
+        pca.fit(matrix)
+        if pca.explained_variance_[0] < 1e-8:
+            total_MEV.append(1)
+        else:
+            total_MEV.append(pca.explained_variance_ratio_[0])
     return np.mean(np.array(total_MEV))
 
 
@@ -328,6 +335,12 @@ def MEV_Anisotropy(data):
     """
     Todo: do Truncated SVD n_components=100, and return average 's variance_explained_ratio of the first component of Truncated SVD
     """
+    svd = TruncatedSVD(n_components=100)
+    svd.fit(matrix)
+    if svd.explained_variance_[0] < 1e-8:
+        total_MEV = 1
+    else:
+        total_MEV = svd.explained_variance_ratio_[0]
 
     return total_MEV
 
@@ -405,6 +418,3 @@ if __name__ == "__main__":
 
     #Bonus
     AnisotropyAdjustedMEV_function()
-
-
-    
