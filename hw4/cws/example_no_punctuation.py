@@ -37,7 +37,7 @@ def seg(sentence):
         if paraphrase_results[i] == 2:
             res.append(sentence[i-length:i+1])
             length = 0
-    print(''.join(res) == sentence)
+    #print(''.join(res) == sentence)
     print(' '.join(res), '\n')
     return ','.join(res) + '\n'
 
