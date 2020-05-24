@@ -114,7 +114,7 @@ class RankDepthLoss(nn.Module):
       for j in range(1, max_length):
         dj = labels_masked[:, j].unsqueeze(1)
         dj_ = predictions_masked[:, j].unsqueeze(1)
-        loss_per_sent = torch.cat((loss_per_sent, ((1 - torch.sign(labels_masked - dj) * (predictions_masked - dj_) * labels_1s))[:, :j]), 1)
+        loss_per_sent = torch.cat((loss_per_sent, ((1 - torch.sign(labels_masked - dj) * (predictions_masked - dj_)) * labels_1s)[:, :j] ), 1)
           
       loss_per_sent = (loss_per_sent > 0).float() * loss_per_sent
       loss_per_sent = torch.sum(loss_per_sent, dim=self.word_dim)
