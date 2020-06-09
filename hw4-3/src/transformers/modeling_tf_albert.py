@@ -14,30 +14,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ TF 2.0 ALBERT model. """
-
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import logging
+import sys
 
 import tensorflow as tf
 
 from .configuration_albert import AlbertConfig
-from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
+from .modeling_tf_utils import TFPreTrainedModel, get_initializer, shape_list
 from .modeling_tf_bert import ACT2FN, TFBertSelfAttention
-from .modeling_tf_utils import TFPreTrainedModel, get_initializer, keras_serializable, shape_list
-from .tokenization_utils import BatchEncoding
+from .file_utils import add_start_docstrings
 
+import logging
 
 logger = logging.getLogger(__name__)
 
 TF_ALBERT_PRETRAINED_MODEL_ARCHIVE_MAP = {
-    "albert-base-v1": "https://cdn.huggingface.co/albert-base-v1-with-prefix-tf_model.h5",
-    "albert-large-v1": "https://cdn.huggingface.co/albert-large-v1-with-prefix-tf_model.h5",
-    "albert-xlarge-v1": "https://cdn.huggingface.co/albert-xlarge-v1-with-prefix-tf_model.h5",
-    "albert-xxlarge-v1": "https://cdn.huggingface.co/albert-xxlarge-v1-with-prefix-tf_model.h5",
-    "albert-base-v2": "https://cdn.huggingface.co/albert-base-v2-with-prefix-tf_model.h5",
-    "albert-large-v2": "https://cdn.huggingface.co/albert-large-v2-with-prefix-tf_model.h5",
-    "albert-xlarge-v2": "https://cdn.huggingface.co/albert-xlarge-v2-with-prefix-tf_model.h5",
-    "albert-xxlarge-v2": "https://cdn.huggingface.co/albert-xxlarge-v2-with-prefix-tf_model.h5",
+    'albert-base-v1': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-base-v1-tf_model.h5",
+    'albert-large-v1': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-large-v1-tf_model.h5",
+    'albert-xlarge-v1': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-xlarge-v1-tf_model.h5",
+    'albert-xxlarge-v1': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-xxlarge-v1-tf_model.h5",
+    'albert-base-v2': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-base-v2-tf_model.h5",
+    'albert-large-v2': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-large-v2-tf_model.h5",
+    'albert-xlarge-v2': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-xlarge-v2-tf_model.h5",
+    'albert-xxlarge-v2': "https://s3.amazonaws.com/models.huggingface.co/bert/albert-xxlarge-v2-tf_model.h5",
 }
 
 
@@ -46,25 +47,24 @@ class TFAlbertEmbeddings(tf.keras.layers.Layer):
     """
 
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        super(TFAlbertEmbeddings, self).__init__(**kwargs)
 
         self.config = config
-        self.position_embeddings = tf.keras.layers.Embedding(
-            config.max_position_embeddings,
-            config.embedding_size,
-            embeddings_initializer=get_initializer(self.config.initializer_range),
-            name="position_embeddings",
-        )
-        self.token_type_embeddings = tf.keras.layers.Embedding(
-            config.type_vocab_size,
-            config.embedding_size,
-            embeddings_initializer=get_initializer(self.config.initializer_range),
-            name="token_type_embeddings",
-        )
+        self.position_embeddings = tf.keras.layers.Embedding(config.max_position_embeddings,
+                                                             config.embedding_size,
+                                                             embeddings_initializer=get_initializer(
+                                                                 self.config.initializer_range),
+                                                             name='position_embeddings')
+        self.token_type_embeddings = tf.keras.layers.Embedding(config.type_vocab_size,
+                                                               config.embedding_size,
+                                                               embeddings_initializer=get_initializer(
+                                                                   self.config.initializer_range),
+                                                               name='token_type_embeddings')
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
-        self.LayerNorm = tf.keras.layers.LayerNormalization(epsilon=config.layer_norm_eps, name="LayerNorm")
+        self.LayerNorm = tf.keras.layers.LayerNormalization(
+            epsilon=config.layer_norm_eps, name='LayerNorm')
         self.dropout = tf.keras.layers.Dropout(config.hidden_dropout_prob)
 
     def build(self, input_shape):
@@ -75,9 +75,8 @@ class TFAlbertEmbeddings(tf.keras.layers.Layer):
             self.word_embeddings = self.add_weight(
                 "weight",
                 shape=[self.config.vocab_size, self.config.embedding_size],
-                initializer=get_initializer(self.config.initializer_range),
-            )
-        super().build(input_shape)
+                initializer=get_initializer(self.config.initializer_range))
+        super(TFAlbertEmbeddings, self).build(input_shape)
 
     def call(self, inputs, mode="embedding", training=False):
         """Get token embeddings of inputs.
@@ -142,33 +141,38 @@ class TFAlbertEmbeddings(tf.keras.layers.Layer):
 
 class TFAlbertSelfAttention(tf.keras.layers.Layer):
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        super(TFAlbertSelfAttention, self).__init__(**kwargs)
         if config.hidden_size % config.num_attention_heads != 0:
             raise ValueError(
                 "The hidden size (%d) is not a multiple of the number of attention "
-                "heads (%d)" % (config.hidden_size, config.num_attention_heads)
-            )
+                "heads (%d)" % (config.hidden_size, config.num_attention_heads))
         self.output_attentions = config.output_attentions
 
         self.num_attention_heads = config.num_attention_heads
         assert config.hidden_size % config.num_attention_heads == 0
-        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
+        self.attention_head_size = int(
+            config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = tf.keras.layers.Dense(
-            self.all_head_size, kernel_initializer=get_initializer(config.initializer_range), name="query"
-        )
-        self.key = tf.keras.layers.Dense(
-            self.all_head_size, kernel_initializer=get_initializer(config.initializer_range), name="key"
-        )
-        self.value = tf.keras.layers.Dense(
-            self.all_head_size, kernel_initializer=get_initializer(config.initializer_range), name="value"
-        )
+        self.query = tf.keras.layers.Dense(self.all_head_size,
+                                           kernel_initializer=get_initializer(
+                                               config.initializer_range),
+                                           name='query')
+        self.key = tf.keras.layers.Dense(self.all_head_size,
+                                         kernel_initializer=get_initializer(
+                                             config.initializer_range),
+                                         name='key')
+        self.value = tf.keras.layers.Dense(self.all_head_size,
+                                           kernel_initializer=get_initializer(
+                                               config.initializer_range),
+                                           name='value')
 
-        self.dropout = tf.keras.layers.Dropout(config.attention_probs_dropout_prob)
+        self.dropout = tf.keras.layers.Dropout(
+            config.attention_probs_dropout_prob)
 
     def transpose_for_scores(self, x, batch_size):
-        x = tf.reshape(x, (batch_size, -1, self.num_attention_heads, self.attention_head_size))
+        x = tf.reshape(
+            x, (batch_size, -1, self.num_attention_heads, self.attention_head_size))
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
     def call(self, inputs, training=False):
@@ -208,21 +212,23 @@ class TFAlbertSelfAttention(tf.keras.layers.Layer):
         context_layer = tf.matmul(attention_probs, value_layer)
 
         context_layer = tf.transpose(context_layer, perm=[0, 2, 1, 3])
-        context_layer = tf.reshape(
-            context_layer, (batch_size, -1, self.all_head_size)
-        )  # (batch_size, seq_len_q, all_head_size)
+        context_layer = tf.reshape(context_layer,
+                                   (batch_size, -1, self.all_head_size))  # (batch_size, seq_len_q, all_head_size)
 
-        outputs = (context_layer, attention_probs) if self.output_attentions else (context_layer,)
+        outputs = (context_layer, attention_probs) if self.output_attentions else (
+            context_layer,)
         return outputs
 
 
 class TFAlbertSelfOutput(tf.keras.layers.Layer):
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
-        self.dense = tf.keras.layers.Dense(
-            config.hidden_size, kernel_initializer=get_initializer(config.initializer_range), name="dense"
-        )
-        self.LayerNorm = tf.keras.layers.LayerNormalization(epsilon=config.layer_norm_eps, name="LayerNorm")
+        super(TFAlbertSelfOutput, self).__init__(**kwargs)
+        self.dense = tf.keras.layers.Dense(config.hidden_size,
+                                           kernel_initializer=get_initializer(
+                                               config.initializer_range),
+                                           name='dense')
+        self.LayerNorm = tf.keras.layers.LayerNormalization(
+            epsilon=config.layer_norm_eps, name='LayerNorm')
         self.dropout = tf.keras.layers.Dropout(config.hidden_dropout_prob)
 
     def call(self, inputs, training=False):
@@ -236,13 +242,15 @@ class TFAlbertSelfOutput(tf.keras.layers.Layer):
 
 class TFAlbertAttention(TFBertSelfAttention):
     def __init__(self, config, **kwargs):
-        super().__init__(config, **kwargs)
+        super(TFAlbertAttention, self).__init__(config, **kwargs)
 
         self.hidden_size = config.hidden_size
-        self.dense = tf.keras.layers.Dense(
-            config.hidden_size, kernel_initializer=get_initializer(config.initializer_range), name="dense"
-        )
-        self.LayerNorm = tf.keras.layers.LayerNormalization(epsilon=config.layer_norm_eps, name="LayerNorm")
+        self.dense = tf.keras.layers.Dense(config.hidden_size,
+                                           kernel_initializer=get_initializer(
+                                               config.initializer_range),
+                                           name='dense')
+        self.LayerNorm = tf.keras.layers.LayerNormalization(
+            epsilon=config.layer_norm_eps, name='LayerNorm')
         self.pruned_heads = set()
 
     def prune_heads(self, heads):
@@ -285,11 +293,11 @@ class TFAlbertAttention(TFBertSelfAttention):
         context_layer = tf.matmul(attention_probs, value_layer)
 
         context_layer = tf.transpose(context_layer, perm=[0, 2, 1, 3])
-        context_layer = tf.reshape(
-            context_layer, (batch_size, -1, self.all_head_size)
-        )  # (batch_size, seq_len_q, all_head_size)
+        context_layer = tf.reshape(context_layer,
+                                   (batch_size, -1, self.all_head_size))  # (batch_size, seq_len_q, all_head_size)
 
-        self_outputs = (context_layer, attention_probs) if self.output_attentions else (context_layer,)
+        self_outputs = (context_layer, attention_probs) if self.output_attentions else (
+            context_layer,)
 
         hidden_states = self_outputs[0]
 
@@ -304,36 +312,35 @@ class TFAlbertAttention(TFBertSelfAttention):
 
 class TFAlbertLayer(tf.keras.layers.Layer):
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
-        self.attention = TFAlbertAttention(config, name="attention")
+        super(TFAlbertLayer, self).__init__(**kwargs)
+        self.attention = TFAlbertAttention(config, name='attention')
 
-        self.ffn = tf.keras.layers.Dense(
-            config.intermediate_size, kernel_initializer=get_initializer(config.initializer_range), name="ffn"
-        )
+        self.ffn = tf.keras.layers.Dense(config.intermediate_size, kernel_initializer=get_initializer(
+            config.initializer_range), name='ffn')
 
-        if isinstance(config.hidden_act, str):
+        if isinstance(config.hidden_act, str) or (sys.version_info[0] == 2 and isinstance(config.hidden_act, unicode)):
             self.activation = ACT2FN[config.hidden_act]
         else:
             self.activation = config.hidden_act
 
-        self.ffn_output = tf.keras.layers.Dense(
-            config.hidden_size, kernel_initializer=get_initializer(config.initializer_range), name="ffn_output"
-        )
+        self.ffn_output = tf.keras.layers.Dense(config.hidden_size, kernel_initializer=get_initializer(
+            config.initializer_range), name='ffn_output')
         self.full_layer_layer_norm = tf.keras.layers.LayerNormalization(
-            epsilon=config.layer_norm_eps, name="full_layer_layer_norm"
-        )
+            epsilon=config.layer_norm_eps, name='full_layer_layer_norm')
         self.dropout = tf.keras.layers.Dropout(config.hidden_dropout_prob)
 
     def call(self, inputs, training=False):
         hidden_states, attention_mask, head_mask = inputs
 
-        attention_outputs = self.attention([hidden_states, attention_mask, head_mask], training=training)
+        attention_outputs = self.attention(
+            [hidden_states, attention_mask, head_mask], training=training)
         ffn_output = self.ffn(attention_outputs[0])
         ffn_output = self.activation(ffn_output)
         ffn_output = self.ffn_output(ffn_output)
 
         hidden_states = self.dropout(hidden_states, training=training)
-        hidden_states = self.full_layer_layer_norm(ffn_output + attention_outputs[0])
+        hidden_states = self.full_layer_layer_norm(
+            ffn_output + attention_outputs[0])
 
         # add attentions if we output them
         outputs = (hidden_states,) + attention_outputs[1:]
@@ -342,13 +349,12 @@ class TFAlbertLayer(tf.keras.layers.Layer):
 
 class TFAlbertLayerGroup(tf.keras.layers.Layer):
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        super(TFAlbertLayerGroup, self).__init__(**kwargs)
 
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
-        self.albert_layers = [
-            TFAlbertLayer(config, name="albert_layers_._{}".format(i)) for i in range(config.inner_group_num)
-        ]
+        self.albert_layers = [TFAlbertLayer(config, name="albert_layers_._{}".format(
+            i)) for i in range(config.inner_group_num)]
 
     def call(self, inputs, training=False):
         hidden_states, attention_mask, head_mask = inputs
@@ -357,7 +363,8 @@ class TFAlbertLayerGroup(tf.keras.layers.Layer):
         layer_attentions = ()
 
         for layer_index, albert_layer in enumerate(self.albert_layers):
-            layer_output = albert_layer([hidden_states, attention_mask, head_mask[layer_index]], training=training)
+            layer_output = albert_layer(
+                [hidden_states, attention_mask, head_mask[layer_index]], training=training)
             hidden_states = layer_output[0]
 
             if self.output_attentions:
@@ -377,20 +384,15 @@ class TFAlbertLayerGroup(tf.keras.layers.Layer):
 
 class TFAlbertTransformer(tf.keras.layers.Layer):
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        super(TFAlbertTransformer, self).__init__(**kwargs)
 
         self.config = config
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
-        self.embedding_hidden_mapping_in = tf.keras.layers.Dense(
-            config.hidden_size,
-            kernel_initializer=get_initializer(config.initializer_range),
-            name="embedding_hidden_mapping_in",
-        )
-        self.albert_layer_groups = [
-            TFAlbertLayerGroup(config, name="albert_layer_groups_._{}".format(i))
-            for i in range(config.num_hidden_groups)
-        ]
+        self.embedding_hidden_mapping_in = tf.keras.layers.Dense(config.hidden_size, kernel_initializer=get_initializer(
+            config.initializer_range), name='embedding_hidden_mapping_in')
+        self.albert_layer_groups = [TFAlbertLayerGroup(
+            config, name="albert_layer_groups_._{}".format(i)) for i in range(config.num_hidden_groups)]
 
     def call(self, inputs, training=False):
         hidden_states, attention_mask, head_mask = inputs
@@ -403,19 +405,15 @@ class TFAlbertTransformer(tf.keras.layers.Layer):
 
         for i in range(self.config.num_hidden_layers):
             # Number of layers in a hidden group
-            layers_per_group = int(self.config.num_hidden_layers / self.config.num_hidden_groups)
+            layers_per_group = int(
+                self.config.num_hidden_layers / self.config.num_hidden_groups)
 
             # Index of the hidden group
-            group_idx = int(i / (self.config.num_hidden_layers / self.config.num_hidden_groups))
+            group_idx = int(
+                i / (self.config.num_hidden_layers / self.config.num_hidden_groups))
 
             layer_group_output = self.albert_layer_groups[group_idx](
-                [
-                    hidden_states,
-                    attention_mask,
-                    head_mask[group_idx * layers_per_group : (group_idx + 1) * layers_per_group],
-                ],
-                training=training,
-            )
+                [hidden_states, attention_mask, head_mask[group_idx*layers_per_group:(group_idx+1)*layers_per_group]], training=training)
             hidden_states = layer_group_output[0]
 
             if self.output_attentions:
@@ -436,9 +434,8 @@ class TFAlbertTransformer(tf.keras.layers.Layer):
 
 class TFAlbertPreTrainedModel(TFPreTrainedModel):
     """ An abstract class to handle weights initialization and
-        a simple interface for downloading and loading pretrained models.
+        a simple interface for dowloading and loading pretrained models.
     """
-
     config_class = AlbertConfig
     pretrained_model_archive_map = TF_ALBERT_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "albert"
@@ -446,29 +443,35 @@ class TFAlbertPreTrainedModel(TFPreTrainedModel):
 
 class TFAlbertMLMHead(tf.keras.layers.Layer):
     def __init__(self, config, input_embeddings, **kwargs):
-        super().__init__(**kwargs)
+        super(TFAlbertMLMHead, self).__init__(**kwargs)
         self.vocab_size = config.vocab_size
 
-        self.dense = tf.keras.layers.Dense(
-            config.embedding_size, kernel_initializer=get_initializer(config.initializer_range), name="dense"
-        )
-        if isinstance(config.hidden_act, str):
+        self.dense = tf.keras.layers.Dense(config.embedding_size,
+                                           kernel_initializer=get_initializer(
+                                               config.initializer_range),
+                                           name='dense')
+        if isinstance(config.hidden_act, str) or (sys.version_info[0] == 2 and isinstance(config.hidden_act, unicode)):
             self.activation = ACT2FN[config.hidden_act]
         else:
             self.activation = config.hidden_act
 
-        self.LayerNorm = tf.keras.layers.LayerNormalization(epsilon=config.layer_norm_eps, name="LayerNorm")
+        self.LayerNorm = tf.keras.layers.LayerNormalization(
+            epsilon=config.layer_norm_eps, name='LayerNorm')
 
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
         self.decoder = input_embeddings
 
     def build(self, input_shape):
-        self.bias = self.add_weight(shape=(self.vocab_size,), initializer="zeros", trainable=True, name="bias")
-        self.decoder_bias = self.add_weight(
-            shape=(self.vocab_size,), initializer="zeros", trainable=True, name="decoder/bias"
-        )
-        super().build(input_shape)
+        self.bias = self.add_weight(shape=(self.vocab_size,),
+                                    initializer='zeros',
+                                    trainable=True,
+                                    name='bias')
+        self.decoder_bias = self.add_weight(shape=(self.vocab_size,),
+                                    initializer='zeros',
+                                    trainable=True,
+                                    name='decoder/bias')
+        super(TFAlbertMLMHead, self).build(input_shape)
 
     def call(self, hidden_states):
         hidden_states = self.dense(hidden_states)
@@ -479,22 +482,127 @@ class TFAlbertMLMHead(tf.keras.layers.Layer):
         return hidden_states
 
 
-@keras_serializable
-class TFAlbertMainLayer(tf.keras.layers.Layer):
-    config_class = AlbertConfig
+ALBERT_START_DOCSTRING = r"""    The ALBERT model was proposed in
+    `ALBERT: A Lite BERT for Self-supervised Learning of Language Representations`_
+    by Zhenzhong Lan, Mingda Chen, Sebastian Goodman, Kevin Gimpel, Piyush Sharma, Radu Soricut. It presents
+    two parameter-reduction techniques to lower memory consumption and increase the trainig speed of BERT.
+
+    This model is a tf.keras.Model `tf.keras.Model`_ sub-class. Use it as a regular TF 2.0 Keras Model and
+    refer to the TF 2.0 documentation for all matter related to general usage and behavior.
+
+    .. _`ALBERT: A Lite BERT for Self-supervised Learning of Language Representations`:
+        https://arxiv.org/abs/1909.11942
+
+    .. _`tf.keras.Model`:
+        https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/keras/Model
+
+    Note on the model inputs:
+        TF 2.0 models accepts two formats as inputs:
+
+            - having all inputs as keyword arguments (like PyTorch models), or
+            - having all inputs as a list, tuple or dict in the first positional arguments.
+
+        This second option is usefull when using `tf.keras.Model.fit()` method which currently requires having all the tensors in the first argument of the model call function: `model(inputs)`.
+
+        If you choose this second option, there are three possibilities you can use to gather all the input Tensors in the first positional argument :
+
+        - a single Tensor with input_ids only and nothing else: `model(inputs_ids)
+        - a list of varying length with one or several input Tensors IN THE ORDER given in the docstring:
+            `model([input_ids, attention_mask])` or `model([input_ids, attention_mask, token_type_ids])`
+        - a dictionary with one or several input Tensors associaed to the input names given in the docstring:
+            `model({'input_ids': input_ids, 'token_type_ids': token_type_ids})`
+
+    Parameters:
+        config (:class:`~transformers.AlbertConfig`): Model configuration class with all the parameters of the model. 
+            Initializing with a config file does not load the weights associated with the model, only the configuration.
+            Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model weights.
+"""
+
+ALBERT_INPUTS_DOCSTRING = r"""
+    Inputs:
+        **input_ids**: ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length)``:
+            Indices of input sequence tokens in the vocabulary.
+            To match pre-training, ALBERT input sequence should be formatted with [CLS] and [SEP] tokens as follows:
+
+            (a) For sequence pairs:
+
+                ``tokens:         [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]``
+                
+                ``token_type_ids:   0   0  0    0    0     0       0   0   1  1  1  1   1   1``
+
+            (b) For single sequences:
+
+                ``tokens:         [CLS] the dog is hairy . [SEP]``
+                
+                ``token_type_ids:   0   0   0   0  0     0   0``
+
+            Albert is a model with absolute position embeddings so it's usually advised to pad the inputs on
+            the right rather than the left.
+
+            Indices can be obtained using :class:`transformers.AlbertTokenizer`.
+            See :func:`transformers.PreTrainedTokenizer.encode` and
+            :func:`transformers.PreTrainedTokenizer.convert_tokens_to_ids` for details.
+        **attention_mask**: (`optional`) ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length)``:
+            Mask to avoid performing attention on padding token indices.
+            Mask values selected in ``[0, 1]``:
+            ``1`` for tokens that are NOT MASKED, ``0`` for MASKED tokens.
+        **token_type_ids**: (`optional`) ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length)``:
+            Segment token indices to indicate first and second portions of the inputs.
+            Indices are selected in ``[0, 1]``: ``0`` corresponds to a `sentence A` token, ``1``
+            corresponds to a `sentence B` token
+            (see `ALBERT: Pre-training of Deep Bidirectional Transformers for Language Understanding`_ for more details).
+        **position_ids**: (`optional`) ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length)``:
+            Indices of positions of each input sequence tokens in the position embeddings.
+            Selected in the range ``[0, config.max_position_embeddings - 1]``.
+        **head_mask**: (`optional`) ``Numpy array`` or ``tf.Tensor`` of shape ``(num_heads,)`` or ``(num_layers, num_heads)``:
+            Mask to nullify selected heads of the self-attention modules.
+            Mask values selected in ``[0, 1]``:
+            ``1`` indicates the head is **not masked**, ``0`` indicates the head is **masked**.
+"""
+
+@add_start_docstrings("The bare Albert Model transformer outputing raw hidden-states without any specific head on top.",
+                      ALBERT_START_DOCSTRING, ALBERT_INPUTS_DOCSTRING)
+class TFAlbertModel(TFAlbertPreTrainedModel):
+    r"""
+    Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
+        **last_hidden_state**: ``tf.Tensor`` of shape ``(batch_size, sequence_length, hidden_size)``
+            Sequence of hidden-states at the output of the last layer of the model.
+        **pooler_output**: ``tf.Tensor`` of shape ``(batch_size, hidden_size)``
+            Last layer hidden-state of the first token of the sequence (classification token)
+            further processed by a Linear layer and a Tanh activation function. The Linear
+            layer weights are trained from the next sentence prediction (classification)
+            objective during Albert pretraining. This output is usually *not* a good summary
+            of the semantic content of the input, you're often better with averaging or pooling
+            the sequence of hidden-states for the whole input sequence.
+        **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
+            list of ``tf.Tensor`` (one for the output of each layer + the output of the embeddings)
+            of shape ``(batch_size, sequence_length, hidden_size)``:
+            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
+        **attentions**: (`optional`, returned when ``config.output_attentions=True``)
+            list of ``tf.Tensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
+
+    Examples::
+
+        import tensorflow as tf
+        from transformers import AlbertTokenizer, TFAlbertModel
+
+        tokenizer = AlbertTokenizer.from_pretrained('bert-base-uncased')
+        model = TFAlbertModel.from_pretrained('bert-base-uncased')
+        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
+        outputs = model(input_ids)
+        last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
+
+    """
 
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        super(TFAlbertModel, self).__init__(config, **kwargs)
         self.num_hidden_layers = config.num_hidden_layers
 
         self.embeddings = TFAlbertEmbeddings(config, name="embeddings")
         self.encoder = TFAlbertTransformer(config, name="encoder")
-        self.pooler = tf.keras.layers.Dense(
-            config.hidden_size,
-            kernel_initializer=get_initializer(config.initializer_range),
-            activation="tanh",
-            name="pooler",
-        )
+        self.pooler = tf.keras.layers.Dense(config.hidden_size, kernel_initializer=get_initializer(
+            config.initializer_range), activation='tanh', name='pooler')
 
     def get_input_embeddings(self):
         return self.embeddings
@@ -509,16 +617,7 @@ class TFAlbertMainLayer(tf.keras.layers.Layer):
         """
         raise NotImplementedError
 
-    def call(
-        self,
-        inputs,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        training=False,
-    ):
+    def call(self, inputs, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None, inputs_embeds=None, training=False):
         if isinstance(inputs, (tuple, list)):
             input_ids = inputs[0]
             attention_mask = inputs[1] if len(inputs) > 1 else attention_mask
@@ -527,13 +626,13 @@ class TFAlbertMainLayer(tf.keras.layers.Layer):
             head_mask = inputs[4] if len(inputs) > 4 else head_mask
             inputs_embeds = inputs[5] if len(inputs) > 5 else inputs_embeds
             assert len(inputs) <= 6, "Too many inputs."
-        elif isinstance(inputs, (dict, BatchEncoding)):
-            input_ids = inputs.get("input_ids")
-            attention_mask = inputs.get("attention_mask", attention_mask)
-            token_type_ids = inputs.get("token_type_ids", token_type_ids)
-            position_ids = inputs.get("position_ids", position_ids)
-            head_mask = inputs.get("head_mask", head_mask)
-            inputs_embeds = inputs.get("inputs_embeds", inputs_embeds)
+        elif isinstance(inputs, dict):
+            input_ids = inputs.get('input_ids')
+            attention_mask = inputs.get('attention_mask', attention_mask)
+            token_type_ids = inputs.get('token_type_ids', token_type_ids)
+            position_ids = inputs.get('position_ids', position_ids)
+            head_mask = inputs.get('head_mask', head_mask)
+            inputs_embeds = inputs.get('inputs_embeds', inputs_embeds)
             assert len(inputs) <= 6, "Too many inputs."
         else:
             input_ids = inputs
@@ -573,14 +672,16 @@ class TFAlbertMainLayer(tf.keras.layers.Layer):
         # attention_probs has shape bsz x n_heads x N x N
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        if head_mask is not None:
+        if not head_mask is None:
             raise NotImplementedError
         else:
             head_mask = [None] * self.num_hidden_layers
             # head_mask = tf.constant([0] * self.num_hidden_layers)
 
-        embedding_output = self.embeddings([input_ids, position_ids, token_type_ids, inputs_embeds], training=training)
-        encoder_outputs = self.encoder([embedding_output, extended_attention_mask, head_mask], training=training)
+        embedding_output = self.embeddings(
+            [input_ids, position_ids, token_type_ids, inputs_embeds], training=training)
+        encoder_outputs = self.encoder(
+            [embedding_output, extended_attention_mask, head_mask], training=training)
 
         sequence_output = encoder_outputs[0]
         pooled_output = self.pooler(sequence_output[:, 0])
@@ -591,160 +692,19 @@ class TFAlbertMainLayer(tf.keras.layers.Layer):
         return outputs
 
 
-ALBERT_START_DOCSTRING = r"""
-    This model is a `tf.keras.Model <https://www.tensorflow.org/api_docs/python/tf/keras/Model>`__ sub-class.
-    Use it as a regular TF 2.0 Keras Model and
-    refer to the TF 2.0 documentation for all matter related to general usage and behavior.
-
-    .. _`ALBERT: A Lite BERT for Self-supervised Learning of Language Representations`:
-        https://arxiv.org/abs/1909.11942
-
-    .. _`tf.keras.Model`:
-        https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/keras/Model
-
-    .. note::
-
-        TF 2.0 models accepts two formats as inputs:
-
-            - having all inputs as keyword arguments (like PyTorch models), or
-            - having all inputs as a list, tuple or dict in the first positional arguments.
-
-        This second option is useful when using :obj:`tf.keras.Model.fit()` method which currently requires having
-        all the tensors in the first argument of the model call function: :obj:`model(inputs)`.
-
-        If you choose this second option, there are three possibilities you can use to gather all the input Tensors
-        in the first positional argument :
-
-        - a single Tensor with input_ids only and nothing else: :obj:`model(inputs_ids)`
-        - a list of varying length with one or several input Tensors IN THE ORDER given in the docstring:
-          :obj:`model([input_ids, attention_mask])` or :obj:`model([input_ids, attention_mask, token_type_ids])`
-        - a dictionary with one or several input Tensors associated to the input names given in the docstring:
-          :obj:`model({'input_ids': input_ids, 'token_type_ids': token_type_ids})`
-
-    Args:
-        config (:class:`~transformers.AlbertConfig`): Model configuration class with all the parameters of the model.
-            Initializing with a config file does not load the weights associated with the model, only the configuration.
-            Check out the :meth:`~transformers.PreTrainedModel.from_pretrained` method to load the model weights.
-"""
-
-ALBERT_INPUTS_DOCSTRING = r"""
-    Args:
-        input_ids (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`):
-            Indices of input sequence tokens in the vocabulary.
-
-            Indices can be obtained using :class:`transformers.AlbertTokenizer`.
-            See :func:`transformers.PreTrainedTokenizer.encode` and
-            :func:`transformers.PreTrainedTokenizer.encode_plus` for details.
-
-            `What are input IDs? <../glossary.html#input-ids>`__
-        attention_mask (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional, defaults to :obj:`None`):
-            Mask to avoid performing attention on padding token indices.
-            Mask values selected in ``[0, 1]``:
-            ``1`` for tokens that are NOT MASKED, ``0`` for MASKED tokens.
-
-            `What are attention masks? <../glossary.html#attention-mask>`__
-        token_type_ids (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
-            Segment token indices to indicate first and second portions of the inputs.
-            Indices are selected in ``[0, 1]``: ``0`` corresponds to a `sentence A` token, ``1``
-            corresponds to a `sentence B` token
-
-            `What are token type IDs? <../glossary.html#token-type-ids>`_
-        position_ids (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length)`, `optional`, defaults to :obj:`None`):
-            Indices of positions of each input sequence tokens in the position embeddings.
-            Selected in the range ``[0, config.max_position_embeddings - 1]``.
-
-            `What are position IDs? <../glossary.html#position-ids>`_
-        head_mask (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(num_heads,)` or :obj:`(num_layers, num_heads)`, `optional`, defaults to :obj:`None`):
-            Mask to nullify selected heads of the self-attention modules.
-            Mask values selected in ``[0, 1]``:
-            ``1`` indicates the head is **not masked**, ``0`` indicates the head is **masked**.
-        input_embeds (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`, defaults to :obj:`None`):
-            Optionally, instead of passing :obj:`input_ids` you can choose to directly pass an embedded representation.
-            This is useful if you want more control over how to convert `input_ids` indices into associated vectors
-            than the model's internal embedding lookup matrix.
-        training (:obj:`boolean`, `optional`, defaults to :obj:`False`):
-            Whether to activate dropout modules (if set to :obj:`True`) during training or to de-activate them
-            (if set to :obj:`False`) for evaluation.
-"""
-
-
-@add_start_docstrings(
-    "The bare Albert Model transformer outputing raw hidden-states without any specific head on top.",
-    ALBERT_START_DOCSTRING,
-)
-class TFAlbertModel(TFAlbertPreTrainedModel):
-    def __init__(self, config, *inputs, **kwargs):
-        super().__init__(config, *inputs, **kwargs)
-        self.albert = TFAlbertMainLayer(config, name="albert")
-
-    @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
-        r"""
-        Returns:
-            :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
-            last_hidden_state (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
-                Sequence of hidden-states at the output of the last layer of the model.
-            pooler_output (:obj:`tf.Tensor` of shape :obj:`(batch_size, hidden_size)`):
-                Last layer hidden-state of the first token of the sequence (classification token)
-                further processed by a Linear layer and a Tanh activation function. The Linear
-                layer weights are trained from the next sentence prediction (classification)
-                objective during Albert pretraining. This output is usually *not* a good summary
-                of the semantic content of the input, you're often better with averaging or pooling
-                the sequence of hidden-states for the whole input sequence.
-            hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when :obj:`config.output_hidden_states=True`):
-                tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
-                of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-                Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-            attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
-                tuple of :obj:`tf.Tensor` (one for each layer) of shape
-                :obj:`(batch_size, num_heads, sequence_length, sequence_length)`:
-
-                Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
-        Examples::
-
-            import tensorflow as tf
-            from transformers import AlbertTokenizer, TFAlbertModel
-
-            tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-            model = TFAlbertModel.from_pretrained('albert-base-v2')
-            input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
-            outputs = model(input_ids)
-            last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
-
-        """
-        outputs = self.albert(inputs, **kwargs)
-        return outputs
-
-
-@add_start_docstrings("""Albert Model with a `language modeling` head on top. """, ALBERT_START_DOCSTRING)
+@add_start_docstrings("""Albert Model with a `language modeling` head on top. """,
+                      ALBERT_START_DOCSTRING, ALBERT_INPUTS_DOCSTRING)
 class TFAlbertForMaskedLM(TFAlbertPreTrainedModel):
-    def __init__(self, config, *inputs, **kwargs):
-        super().__init__(config, *inputs, **kwargs)
-
-        self.albert = TFAlbertMainLayer(config, name="albert")
-        self.predictions = TFAlbertMLMHead(config, self.albert.embeddings, name="predictions")
-
-    def get_output_embeddings(self):
-        return self.albert.embeddings
-
-    @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
-        r"""
-    Returns:
-        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
-        prediction_scores (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`
+    r"""
+    Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
+        **prediction_scores**: ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length, config.vocab_size)``
             Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
-        hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when :obj:`config.output_hidden_states=True`):
-            tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
+        **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
+            list of ``Numpy array`` or ``tf.Tensor`` (one for the output of each layer + the output of the embeddings)
+            of shape ``(batch_size, sequence_length, hidden_size)``:
             Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
-            tuple of :obj:`tf.Tensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`:
-
+        **attentions**: (`optional`, returned when ``config.output_attentions=True``)
+            list of ``Numpy array`` or ``tf.Tensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
 
     Examples::
@@ -758,11 +718,24 @@ class TFAlbertForMaskedLM(TFAlbertPreTrainedModel):
         outputs = model(input_ids)
         prediction_scores = outputs[0]
 
-        """
+    """
+
+    def __init__(self, config, *inputs, **kwargs):
+        super(TFAlbertForMaskedLM, self).__init__(config, *inputs, **kwargs)
+
+        self.albert = TFAlbertModel(config, name='albert')
+        self.predictions = TFAlbertMLMHead(
+            config, self.albert.embeddings, name='predictions')
+
+    def get_output_embeddings(self):
+        return self.albert.embeddings
+
+    def call(self, inputs, **kwargs):
         outputs = self.albert(inputs, **kwargs)
 
         sequence_output = outputs[0]
-        prediction_scores = self.predictions(sequence_output, training=kwargs.get("training", False))
+        prediction_scores = self.predictions(
+            sequence_output, training=kwargs.get('training', False))
 
         # Add hidden states and attention if they are here
         outputs = (prediction_scores,) + outputs[2:]
@@ -770,38 +743,20 @@ class TFAlbertForMaskedLM(TFAlbertPreTrainedModel):
         return outputs  # prediction_scores, (hidden_states), (attentions)
 
 
-@add_start_docstrings(
-    """Albert Model transformer with a sequence classification/regression head on top (a linear layer on top of
+@add_start_docstrings("""Albert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
-    ALBERT_START_DOCSTRING,
-)
+    ALBERT_START_DOCSTRING, ALBERT_INPUTS_DOCSTRING)
 class TFAlbertForSequenceClassification(TFAlbertPreTrainedModel):
-    def __init__(self, config, *inputs, **kwargs):
-        super().__init__(config, *inputs, **kwargs)
-        self.num_labels = config.num_labels
-
-        self.albert = TFAlbertMainLayer(config, name="albert")
-        self.dropout = tf.keras.layers.Dropout(config.classifier_dropout_prob)
-        self.classifier = tf.keras.layers.Dense(
-            config.num_labels, kernel_initializer=get_initializer(config.initializer_range), name="classifier"
-        )
-
-    @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
-        r"""
-    Returns:
-        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
-        logits (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, config.num_labels)`)
+    r"""
+    Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
+        **logits**: ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, config.num_labels)``
             Classification (or regression if config.num_labels==1) scores (before SoftMax).
-        hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when :obj:`config.output_hidden_states=True`):
-            tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
+        **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
+            list of ``Numpy array`` or ``tf.Tensor`` (one for the output of each layer + the output of the embeddings)
+            of shape ``(batch_size, sequence_length, hidden_size)``:
             Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
-            tuple of :obj:`tf.Tensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`:
-
+        **attentions**: (`optional`, returned when ``config.output_attentions=True``)
+            list of ``Numpy array`` or ``tf.Tensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
 
     Examples::
@@ -815,79 +770,25 @@ class TFAlbertForSequenceClassification(TFAlbertPreTrainedModel):
         outputs = model(input_ids)
         logits = outputs[0]
 
-        """
+    """
+    def __init__(self, config, *inputs, **kwargs):
+        super(TFAlbertForSequenceClassification, self).__init__(config, *inputs, **kwargs)
+        self.num_labels = config.num_labels
+
+        self.albert = TFAlbertModel(config, name='albert')
+        self.dropout = tf.keras.layers.Dropout(config.hidden_dropout_prob)
+        self.classifier = tf.keras.layers.Dense(config.num_labels,
+                                                kernel_initializer=get_initializer(config.initializer_range),
+                                                name='classifier')
+
+    def call(self, inputs, **kwargs):
         outputs = self.albert(inputs, **kwargs)
 
         pooled_output = outputs[1]
 
-        pooled_output = self.dropout(pooled_output, training=kwargs.get("training", False))
+        pooled_output = self.dropout(pooled_output, training=kwargs.get('training', False))
         logits = self.classifier(pooled_output)
 
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
 
         return outputs  # logits, (hidden_states), (attentions)
-
-
-@add_start_docstrings(
-    """Albert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear layers on top of the hidden-states output to compute `span start logits` and `span end logits`). """,
-    ALBERT_START_DOCSTRING,
-)
-class TFAlbertForQuestionAnswering(TFAlbertPreTrainedModel):
-    def __init__(self, config, *inputs, **kwargs):
-        super().__init__(config, *inputs, **kwargs)
-        self.num_labels = config.num_labels
-
-        self.albert = TFAlbertMainLayer(config, name="albert")
-        self.qa_outputs = tf.keras.layers.Dense(
-            config.num_labels, kernel_initializer=get_initializer(config.initializer_range), name="qa_outputs"
-        )
-
-    @add_start_docstrings_to_callable(ALBERT_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
-        r"""
-    Return:
-        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.AlbertConfig`) and inputs:
-        start_scores (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length,)`):
-            Span-start scores (before SoftMax).
-        end_scores (:obj:`Numpy array` or :obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length,)`):
-            Span-end scores (before SoftMax).
-        hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when :obj:`config.output_hidden_states=True`):
-            tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
-            Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
-            tuple of :obj:`tf.Tensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`:
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
-
-    Examples::
-
-        # The checkpoint albert-base-v2 is not fine-tuned for question answering. Please see the
-        # examples/run_squad.py example to see how to fine-tune a model to a question answering task.
-
-        import tensorflow as tf
-        from transformers import AlbertTokenizer, TFAlbertForQuestionAnswering
-
-        tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        model = TFAlbertForQuestionAnswering.from_pretrained('albert-base-v2')
-        input_ids = tokenizer.encode("Who was Jim Henson?", "Jim Henson was a nice puppet")
-        start_scores, end_scores = model(tf.constant(input_ids)[None, :]) # Batch size 1
-
-        all_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-        answer = ' '.join(all_tokens[tf.math.argmax(start_scores, 1)[0] : tf.math.argmax(end_scores, 1)[0]+1])
-
-        """
-        outputs = self.albert(inputs, **kwargs)
-
-        sequence_output = outputs[0]
-
-        logits = self.qa_outputs(sequence_output)
-        start_logits, end_logits = tf.split(logits, 2, axis=-1)
-        start_logits = tf.squeeze(start_logits, axis=-1)
-        end_logits = tf.squeeze(end_logits, axis=-1)
-
-        outputs = (start_logits, end_logits,) + outputs[2:]
-
-        return outputs  # start_logits, end_logits, (hidden_states), (attentions)

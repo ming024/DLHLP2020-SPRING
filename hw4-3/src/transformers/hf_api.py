@@ -12,26 +12,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import absolute_import, division, print_function
 
-
-import io
 import os
 from os.path import expanduser
-from typing import Dict, List, Optional, Tuple
+import six
 
 import requests
-from tqdm import tqdm
-
+from requests.exceptions import HTTPError
 
 ENDPOINT = "https://huggingface.co"
 
-
 class S3Obj:
-    """
-    Data structure that represents a file belonging to the current user.
-    """
-
-    def __init__(self, filename: str, LastModified: str, ETag: str, Size: int, **kwargs):
+    def __init__(
+        self,
+        filename,     # type: str
+        LastModified, # type: str
+        ETag,         # type: str
+        Size,         # type: int
+        **kwargs
+    ):
         self.filename = filename
         self.LastModified = LastModified
         self.ETag = ETag
@@ -39,61 +39,28 @@ class S3Obj:
 
 
 class PresignedUrl:
-    def __init__(self, write: str, access: str, type: str, **kwargs):
+    def __init__(
+        self,
+        write,  # type: str
+        access, # type: str
+        type,   # type: str
+        **kwargs
+    ):
         self.write = write
         self.access = access
-        self.type = type  # mime-type to send to S3.
-
-
-class S3Object:
-    """
-    Data structure that represents a public file accessible on our S3.
-    """
-
-    def __init__(
-        self,
-        key: str,  # S3 object key
-        etag: str,
-        lastModified: str,
-        size: int,
-        rfilename: str,  # filename relative to config.json
-        **kwargs
-    ):
-        self.key = key
-        self.etag = etag
-        self.lastModified = lastModified
-        self.size = size
-        self.rfilename = rfilename
-
-
-class ModelInfo:
-    """
-    Info about a public model accessible from our S3.
-    """
-
-    def __init__(
-        self,
-        modelId: str,  # id of model
-        key: str,  # S3 object key of config.json
-        author: Optional[str] = None,
-        downloads: Optional[int] = None,
-        tags: List[str] = [],
-        siblings: List[Dict] = [],  # list of files that constitute the model
-        **kwargs
-    ):
-        self.modelId = modelId
-        self.key = key
-        self.author = author
-        self.downloads = downloads
-        self.tags = tags
-        self.siblings = [S3Object(**x) for x in siblings]
+        self.type = type # mime-type to send to S3.
 
 
 class HfApi:
     def __init__(self, endpoint=None):
         self.endpoint = endpoint if endpoint is not None else ENDPOINT
 
-    def login(self, username: str, password: str) -> str:
+    def login(
+        self,
+        username, # type: str
+        password, # type: str
+    ):
+        # type: (...) -> str
         """
         Call HF API to sign in a user and get a token if credentials are valid.
 
@@ -109,7 +76,11 @@ class HfApi:
         d = r.json()
         return d["token"]
 
-    def whoami(self, token: str) -> Tuple[str, List[str]]:
+    def whoami(
+        self,
+        token, # type: str
+    ):
+        # type: (...) -> str
         """
         Call HF API to know "whoami"
         """
@@ -117,9 +88,10 @@ class HfApi:
         r = requests.get(path, headers={"authorization": "Bearer {}".format(token)})
         r.raise_for_status()
         d = r.json()
-        return d["user"], d["orgs"]
+        return d["user"]
 
-    def logout(self, token: str) -> None:
+    def logout(self, token):
+        # type: (...) -> void
         """
         Call HF API to log out.
         """
@@ -127,7 +99,8 @@ class HfApi:
         r = requests.post(path, headers={"authorization": "Bearer {}".format(token)})
         r.raise_for_status()
 
-    def presign(self, token: str, filename: str, organization: Optional[str] = None) -> PresignedUrl:
+    def presign(self, token, filename):
+        # type: (...) -> PresignedUrl
         """
         Call HF API to get a presigned url to upload `filename` to S3.
         """
@@ -135,90 +108,46 @@ class HfApi:
         r = requests.post(
             path,
             headers={"authorization": "Bearer {}".format(token)},
-            json={"filename": filename, "organization": organization},
+            json={"filename": filename},
         )
         r.raise_for_status()
         d = r.json()
         return PresignedUrl(**d)
 
-    def presign_and_upload(self, token: str, filename: str, filepath: str, organization: Optional[str] = None) -> str:
+    def presign_and_upload(self, token, filename, filepath):
+        # type: (...) -> str
         """
         Get a presigned url, then upload file to S3.
 
         Outputs:
             url: Read-only url for the stored file on S3.
         """
-        urls = self.presign(token, filename=filename, organization=organization)
+        urls = self.presign(token, filename=filename)
         # streaming upload:
         # https://2.python-requests.org/en/master/user/advanced/#streaming-uploads
-        #
+        # 
         # Even though we presign with the correct content-type,
         # the client still has to specify it when uploading the file.
         with open(filepath, "rb") as f:
-            pf = TqdmProgressFileReader(f)
-            data = f if pf.total_size > 0 else ""
-
-            r = requests.put(urls.write, data=data, headers={"content-type": urls.type})
+            r = requests.put(urls.write, data=f, headers={
+                "content-type": urls.type,
+            })
             r.raise_for_status()
-            pf.close()
         return urls.access
 
-    def list_objs(self, token: str, organization: Optional[str] = None) -> List[S3Obj]:
+    def list_objs(self, token):
+        # type: (...) -> List[S3Obj]
         """
-        Call HF API to list all stored files for user (or one of their organizations).
+        Call HF API to list all stored files for user.
         """
         path = "{}/api/listObjs".format(self.endpoint)
-        params = {"organization": organization} if organization is not None else None
-        r = requests.get(path, params=params, headers={"authorization": "Bearer {}".format(token)})
+        r = requests.get(path, headers={"authorization": "Bearer {}".format(token)})
         r.raise_for_status()
         d = r.json()
         return [S3Obj(**x) for x in d]
 
-    def delete_obj(self, token: str, filename: str, organization: Optional[str] = None):
-        """
-        Call HF API to delete a file stored by user
-        """
-        path = "{}/api/deleteObj".format(self.endpoint)
-        r = requests.delete(
-            path,
-            headers={"authorization": "Bearer {}".format(token)},
-            json={"filename": filename, "organization": organization},
-        )
-        r.raise_for_status()
-
-    def model_list(self) -> List[ModelInfo]:
-        """
-        Get the public list of all the models on huggingface, including the community models
-        """
-        path = "{}/api/models".format(self.endpoint)
-        r = requests.get(path)
-        r.raise_for_status()
-        d = r.json()
-        return [ModelInfo(**x) for x in d]
 
 
-class TqdmProgressFileReader:
-    """
-    Wrap an io.BufferedReader `f` (such as the output of `open(…, "rb")`)
-    and override `f.read()` so as to display a tqdm progress bar.
-
-    see github.com/huggingface/transformers/pull/2078#discussion_r354739608
-    for implementation details.
-    """
-
-    def __init__(self, f: io.BufferedReader):
-        self.f = f
-        self.total_size = os.fstat(f.fileno()).st_size
-        self.pbar = tqdm(total=self.total_size, leave=False)
-        self.read = f.read
-        f.read = self._read
-
-    def _read(self, n=-1):
-        self.pbar.update(n)
-        return self.read(n)
-
-    def close(self):
-        self.pbar.close()
 
 
 class HfFolder:
@@ -229,8 +158,17 @@ class HfFolder:
         """
         Save token, creating folder as needed.
         """
-        os.makedirs(os.path.dirname(cls.path_token), exist_ok=True)
-        with open(cls.path_token, "w+") as f:
+        if six.PY3:
+            os.makedirs(os.path.dirname(cls.path_token), exist_ok=True)
+        else:
+            # Python 2
+            try:
+                os.makedirs(os.path.dirname(cls.path_token))
+            except OSError as e:
+                if e.errno != os.errno.EEXIST:
+                    raise e
+                pass
+        with open(cls.path_token, 'w+') as f:
             f.write(token)
 
     @classmethod
@@ -239,10 +177,12 @@ class HfFolder:
         Get token or None if not existent.
         """
         try:
-            with open(cls.path_token, "r") as f:
+            with open(cls.path_token, 'r') as f:
                 return f.read()
-        except FileNotFoundError:
-            pass
+        except:
+            # this is too wide. When Py2 is dead use:
+            # `except FileNotFoundError:` instead
+            return None
 
     @classmethod
     def delete_token(cls):
@@ -252,5 +192,5 @@ class HfFolder:
         """
         try:
             os.remove(cls.path_token)
-        except FileNotFoundError:
-            pass
+        except:
+            return

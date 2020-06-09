@@ -16,33 +16,38 @@
 """ TF 2.0 Transformer XL model.
 """
 
+from __future__ import absolute_import, division, print_function, unicode_literals
 
+import os
+import json
+import math
 import logging
+import collections
+import sys
+from io import open
 
+import numpy as np
 import tensorflow as tf
 
 from .configuration_transfo_xl import TransfoXLConfig
-from .file_utils import add_start_docstrings, add_start_docstrings_to_callable
+from .modeling_tf_utils import TFPreTrainedModel, TFConv1D, TFSequenceSummary, shape_list, get_initializer
 from .modeling_tf_transfo_xl_utilities import TFAdaptiveSoftmaxMask
-from .modeling_tf_utils import TFPreTrainedModel, get_initializer, keras_serializable, shape_list
-from .tokenization_utils import BatchEncoding
-
+from .file_utils import add_start_docstrings
 
 logger = logging.getLogger(__name__)
 
 TF_TRANSFO_XL_PRETRAINED_MODEL_ARCHIVE_MAP = {
-    "transfo-xl-wt103": "https://cdn.huggingface.co/transfo-xl-wt103-tf_model.h5",
+    'transfo-xl-wt103': "https://s3.amazonaws.com/models.huggingface.co/bert/transfo-xl-wt103-tf_model.h5",
 }
-
 
 class TFPositionalEmbedding(tf.keras.layers.Layer):
     def __init__(self, demb, **kwargs):
-        super().__init__(**kwargs)
+        super(TFPositionalEmbedding, self).__init__(**kwargs)
 
         self.inv_freq = 1 / (10000 ** (tf.range(0, demb, 2.0) / demb))
 
     def call(self, pos_seq, bsz=None):
-        sinusoid_inp = tf.einsum("i,j->ij", pos_seq, self.inv_freq)
+        sinusoid_inp = tf.einsum('i,j->ij', pos_seq, self.inv_freq)
         pos_emb = tf.concat([tf.sin(sinusoid_inp), tf.cos(sinusoid_inp)], -1)
 
         if bsz is not None:
@@ -53,67 +58,56 @@ class TFPositionalEmbedding(tf.keras.layers.Layer):
 
 class TFPositionwiseFF(tf.keras.layers.Layer):
     def __init__(self, d_model, d_inner, dropout, pre_lnorm=False, layer_norm_epsilon=1e-5, init_std=0.02, **kwargs):
-        super().__init__(**kwargs)
+        super(TFPositionwiseFF, self).__init__(**kwargs)
 
         self.d_model = d_model
         self.d_inner = d_inner
         self.dropout = dropout
 
-        self.layer_1 = tf.keras.layers.Dense(
-            d_inner, kernel_initializer=get_initializer(init_std), activation=tf.nn.relu, name="CoreNet_._0"
-        )
+        self.layer_1 = tf.keras.layers.Dense(d_inner,
+                                             kernel_initializer=get_initializer(init_std),
+                                             activation=tf.nn.relu,
+                                             name='CoreNet_._0')
         self.drop_1 = tf.keras.layers.Dropout(dropout)
-        self.layer_2 = tf.keras.layers.Dense(d_model, kernel_initializer=get_initializer(init_std), name="CoreNet_._3")
+        self.layer_2 = tf.keras.layers.Dense(d_model,
+                                             kernel_initializer=get_initializer(init_std),
+                                             name='CoreNet_._3')
         self.drop_2 = tf.keras.layers.Dropout(dropout)
 
-        self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=layer_norm_epsilon, name="layer_norm")
+        self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=layer_norm_epsilon, name='layer_norm')
 
         self.pre_lnorm = pre_lnorm
 
     def call(self, inp, training=False):
         if self.pre_lnorm:
-            # layer normalization + positionwise feed-forward
+            ##### layer normalization + positionwise feed-forward
             core_out = self.layer_norm(inp)
             core_out = self.layer_1(core_out)
             core_out = self.drop_1(core_out, training=training)
             core_out = self.layer_2(core_out)
             core_out = self.drop_2(core_out, training=training)
 
-            # residual connection
+            ##### residual connection
             output = core_out + inp
         else:
-            # positionwise feed-forward
+            ##### positionwise feed-forward
             core_out = self.layer_1(inp)
             core_out = self.drop_1(core_out, training=training)
             core_out = self.layer_2(core_out)
             core_out = self.drop_2(core_out, training=training)
 
-            # residual connection + layer normalization
+            ##### residual connection + layer normalization
             output = self.layer_norm(inp + core_out)
 
         return output
 
 
 class TFRelPartialLearnableMultiHeadAttn(tf.keras.layers.Layer):
-    def __init__(
-        self,
-        n_head,
-        d_model,
-        d_head,
-        dropout,
-        dropatt=0,
-        tgt_len=None,
-        ext_len=None,
-        mem_len=None,
-        pre_lnorm=False,
-        r_r_bias=None,
-        r_w_bias=None,
-        output_attentions=False,
-        layer_norm_epsilon=1e-5,
-        init_std=0.02,
-        **kwargs
-    ):
-        super().__init__(**kwargs)
+    def __init__(self, n_head, d_model, d_head, dropout, dropatt=0,
+                 tgt_len=None, ext_len=None, mem_len=None, pre_lnorm=False,
+                 r_r_bias=None, r_w_bias=None, output_attentions=False, 
+                 layer_norm_epsilon=1e-5, init_std=0.02, **kwargs):
+        super(TFRelPartialLearnableMultiHeadAttn, self).__init__(**kwargs)
 
         self.output_attentions = output_attentions
         self.n_head = n_head
@@ -121,42 +115,47 @@ class TFRelPartialLearnableMultiHeadAttn(tf.keras.layers.Layer):
         self.d_head = d_head
         self.dropout = dropout
 
-        self.qkv_net = tf.keras.layers.Dense(
-            3 * n_head * d_head, kernel_initializer=get_initializer(init_std), use_bias=False, name="qkv_net"
-        )
+        self.qkv_net = tf.keras.layers.Dense(3 * n_head * d_head,
+                                             kernel_initializer=get_initializer(init_std),
+                                             use_bias=False,
+                                             name='qkv_net')
 
         self.drop = tf.keras.layers.Dropout(dropout)
         self.dropatt = tf.keras.layers.Dropout(dropatt)
-        self.o_net = tf.keras.layers.Dense(
-            d_model, kernel_initializer=get_initializer(init_std), use_bias=False, name="o_net"
-        )
+        self.o_net = tf.keras.layers.Dense(d_model,
+                                           kernel_initializer=get_initializer(init_std),
+                                           use_bias=False,
+                                           name='o_net')
 
-        self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=layer_norm_epsilon, name="layer_norm")
+        self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=layer_norm_epsilon, name='layer_norm')
 
         self.scale = 1 / (d_head ** 0.5)
 
         self.pre_lnorm = pre_lnorm
 
-        if r_r_bias is not None and r_w_bias is not None:  # Biases are shared
+        if r_r_bias is not None and r_w_bias is not None: # Biases are shared
             self.r_r_bias = r_r_bias
             self.r_w_bias = r_w_bias
         else:
             self.r_r_bias = None
             self.r_w_bias = None
 
-        self.r_net = tf.keras.layers.Dense(
-            self.n_head * self.d_head, kernel_initializer=get_initializer(init_std), use_bias=False, name="r_net"
-        )
+        self.r_net = tf.keras.layers.Dense(self.n_head * self.d_head,
+                                           kernel_initializer=get_initializer(init_std),
+                                           use_bias=False,
+                                           name='r_net')
 
     def build(self, input_shape):
-        if self.r_r_bias is None or self.r_w_bias is None:  # Biases are not shared
-            self.r_r_bias = self.add_weight(
-                shape=(self.n_head, self.d_head), initializer="zeros", trainable=True, name="r_r_bias"
-            )
-            self.r_w_bias = self.add_weight(
-                shape=(self.n_head, self.d_head), initializer="zeros", trainable=True, name="r_w_bias"
-            )
-        super().build(input_shape)
+        if self.r_r_bias is None or self.r_w_bias is None: # Biases are not shared
+            self.r_r_bias = self.add_weight(shape=(self.n_head, self.d_head),
+                                            initializer='zeros',
+                                            trainable=True,
+                                            name='r_r_bias')
+            self.r_w_bias = self.add_weight(shape=(self.n_head, self.d_head),
+                                            initializer='zeros',
+                                            trainable=True,
+                                            name='r_w_bias')
+        super(TFRelPartialLearnableMultiHeadAttn, self).build(input_shape)
 
     def _rel_shift(self, x):
         x_size = shape_list(x)
@@ -197,21 +196,21 @@ class TFRelPartialLearnableMultiHeadAttn(tf.keras.layers.Layer):
         w_head_k = tf.reshape(w_head_k, (klen, bsz, self.n_head, self.d_head))  # qlen x bsz x n_head x d_head
         w_head_v = tf.reshape(w_head_v, (klen, bsz, self.n_head, self.d_head))  # qlen x bsz x n_head x d_head
 
-        r_head_k = tf.reshape(r_head_k, (rlen, self.n_head, self.d_head))  # qlen x n_head x d_head
+        r_head_k = tf.reshape(r_head_k, (rlen, self.n_head, self.d_head))       # qlen x n_head x d_head
 
-        # compute attention score
-        rw_head_q = w_head_q + self.r_w_bias  # qlen x bsz x n_head x d_head
-        AC = tf.einsum("ibnd,jbnd->ijbn", rw_head_q, w_head_k)  # qlen x klen x bsz x n_head
+        #### compute attention score
+        rw_head_q = w_head_q + self.r_w_bias                                    # qlen x bsz x n_head x d_head
+        AC = tf.einsum('ibnd,jbnd->ijbn', rw_head_q, w_head_k)                  # qlen x klen x bsz x n_head
 
         rr_head_q = w_head_q + self.r_r_bias
-        BD = tf.einsum("ibnd,jnd->ijbn", rr_head_q, r_head_k)  # qlen x klen x bsz x n_head
+        BD = tf.einsum('ibnd,jnd->ijbn', rr_head_q, r_head_k)                   # qlen x klen x bsz x n_head
         BD = self._rel_shift(BD)
 
         # [qlen x klen x bsz x n_head]
         attn_score = AC + BD
         attn_score = attn_score * self.scale
 
-        # compute attention probability
+        #### compute attention probability
         if attn_mask is not None:
             attn_mask_t = attn_mask[:, :, None, None]
             attn_score = attn_score * (1 - attn_mask_t) - 1e30 * attn_mask_t
@@ -224,22 +223,23 @@ class TFRelPartialLearnableMultiHeadAttn(tf.keras.layers.Layer):
         if head_mask is not None:
             attn_prob = attn_prob * head_mask
 
-        # compute attention vector
-        attn_vec = tf.einsum("ijbn,jbnd->ibnd", attn_prob, w_head_v)
+        #### compute attention vector
+        attn_vec = tf.einsum('ijbn,jbnd->ibnd', attn_prob, w_head_v)
 
         # [qlen x bsz x n_head x d_head]
         attn_vec_sizes = shape_list(attn_vec)
-        attn_vec = tf.reshape(attn_vec, (attn_vec_sizes[0], attn_vec_sizes[1], self.n_head * self.d_head))
+        attn_vec = tf.reshape(attn_vec, 
+                        (attn_vec_sizes[0], attn_vec_sizes[1], self.n_head * self.d_head))
 
-        # linear projection
+        ##### linear projection
         attn_out = self.o_net(attn_vec)
         attn_out = self.drop(attn_out, training=training)
 
         if self.pre_lnorm:
-            # residual connection
+            ##### residual connection
             outputs = [w + attn_out]
         else:
-            # residual connection + layer normalization
+            ##### residual connection + layer normalization
             outputs = [self.layer_norm(w + attn_out)]
 
         if self.output_attentions:
@@ -249,57 +249,32 @@ class TFRelPartialLearnableMultiHeadAttn(tf.keras.layers.Layer):
 
 
 class TFRelPartialLearnableDecoderLayer(tf.keras.layers.Layer):
-    def __init__(
-        self,
-        n_head,
-        d_model,
-        d_head,
-        d_inner,
-        dropout,
-        tgt_len=None,
-        ext_len=None,
-        mem_len=None,
-        dropatt=0.0,
-        pre_lnorm=False,
-        r_w_bias=None,
-        r_r_bias=None,
-        output_attentions=False,
-        layer_norm_epsilon=1e-5,
-        init_std=0.02,
-        **kwargs
-    ):
-        super().__init__(**kwargs)
+    def __init__(self, n_head, d_model, d_head, d_inner, dropout,
+                 tgt_len=None, ext_len=None, mem_len=None,
+                 dropatt=0., pre_lnorm=False,
+                 r_w_bias=None,
+                 r_r_bias=None,
+                 output_attentions=False,
+                 layer_norm_epsilon=1e-5,
+                 init_std=0.02,
+                 **kwargs):
+        super(TFRelPartialLearnableDecoderLayer, self).__init__(**kwargs)
 
-        self.dec_attn = TFRelPartialLearnableMultiHeadAttn(
-            n_head,
-            d_model,
-            d_head,
-            dropout,
-            tgt_len=tgt_len,
-            ext_len=ext_len,
-            mem_len=mem_len,
-            dropatt=dropatt,
-            pre_lnorm=pre_lnorm,
-            r_w_bias=r_w_bias,
-            r_r_bias=r_r_bias,
-            init_std=init_std,
-            output_attentions=output_attentions,
-            layer_norm_epsilon=layer_norm_epsilon,
-            name="dec_attn",
-        )
-        self.pos_ff = TFPositionwiseFF(
-            d_model,
-            d_inner,
-            dropout,
-            pre_lnorm=pre_lnorm,
-            init_std=init_std,
-            layer_norm_epsilon=layer_norm_epsilon,
-            name="pos_ff",
-        )
+        self.dec_attn = TFRelPartialLearnableMultiHeadAttn(n_head, d_model,
+                            d_head, dropout, tgt_len=tgt_len, ext_len=ext_len,
+                            mem_len=mem_len, dropatt=dropatt, pre_lnorm=pre_lnorm,
+                            r_w_bias=r_w_bias, r_r_bias=r_r_bias, init_std=init_std,
+                            output_attentions=output_attentions,
+                            layer_norm_epsilon=layer_norm_epsilon, name='dec_attn')
+        self.pos_ff = TFPositionwiseFF(d_model, d_inner, dropout, 
+                                       pre_lnorm=pre_lnorm, init_std=init_std,
+                                       layer_norm_epsilon=layer_norm_epsilon,
+                                       name='pos_ff')
 
     def call(self, inputs, training=False):
         dec_inp, r, dec_attn_mask, mems, head_mask = inputs
-        attn_outputs = self.dec_attn([dec_inp, r, dec_attn_mask, mems, head_mask], training=training)
+        attn_outputs = self.dec_attn([dec_inp, r, dec_attn_mask,
+                                      mems, head_mask], training=training)
         ff_output = self.pos_ff(attn_outputs[0], training=training)
 
         outputs = [ff_output] + attn_outputs[1:]
@@ -308,8 +283,9 @@ class TFRelPartialLearnableDecoderLayer(tf.keras.layers.Layer):
 
 
 class TFAdaptiveEmbedding(tf.keras.layers.Layer):
-    def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1, init_std=0.02, sample_softmax=False, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, n_token, d_embed, d_proj, cutoffs, div_val=1, init_std=0.02,
+                 sample_softmax=False, **kwargs):
+        super(TFAdaptiveEmbedding, self).__init__(**kwargs)
 
         self.n_token = n_token
         self.d_embed = d_embed
@@ -329,29 +305,21 @@ class TFAdaptiveEmbedding(tf.keras.layers.Layer):
             raise NotImplementedError  # Removed these to avoid maintaining dead code - They are not used in our pretrained checkpoint
         else:
             for i in range(len(self.cutoffs)):
-                l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i + 1]
+                l_idx, r_idx = self.cutoff_ends[i], self.cutoff_ends[i+1]
                 d_emb_i = d_embed // (div_val ** i)
-                self.emb_layers.append(
-                    tf.keras.layers.Embedding(
-                        r_idx - l_idx,
-                        d_emb_i,
-                        embeddings_initializer=get_initializer(init_std),
-                        name="emb_layers_._{}".format(i),
-                    )
-                )
+                self.emb_layers.append(tf.keras.layers.Embedding(r_idx-l_idx,
+                                                                 d_emb_i,
+                                                                 embeddings_initializer=get_initializer(init_std),
+                                                                 name='emb_layers_._{}'.format(i)))
 
     def build(self, input_shape):
         for i in range(len(self.cutoffs)):
             d_emb_i = self.d_embed // (self.div_val ** i)
-            self.emb_projs.append(
-                self.add_weight(
-                    shape=(d_emb_i, self.d_proj),
-                    initializer=get_initializer(self.init_std),
-                    trainable=True,
-                    name="emb_projs_._{}".format(i),
-                )
-            )
-        super().build(input_shape)
+            self.emb_projs.append(self.add_weight(shape=(d_emb_i, self.d_proj),
+                                                  initializer=get_initializer(self.init_std),
+                                                  trainable=True,
+                                                  name='emb_projs_._{}'.format(i)))
+        super(TFAdaptiveEmbedding, self).build(input_shape)
 
     def call(self, inp):
         if self.div_val == 1:
@@ -366,7 +334,7 @@ class TFAdaptiveEmbedding(tf.keras.layers.Layer):
 
                 inp_i = tf.boolean_mask(inp_flat, mask_i) - l_idx
                 emb_i = self.emb_layers[i](inp_i)
-                emb_i = tf.einsum("id,de->ie", emb_i, self.emb_projs[i])
+                emb_i = tf.einsum('id,de->ie', emb_i, self.emb_projs[i])
 
                 mask_idx = tf.cast(tf.where(mask_i), dtype=tf.int64)
                 emb_flat += tf.scatter_nd(mask_idx, emb_i, tf.cast(shape_list(emb_flat), dtype=tf.int64))
@@ -379,16 +347,13 @@ class TFAdaptiveEmbedding(tf.keras.layers.Layer):
         return embed
 
 
-@keras_serializable
 class TFTransfoXLMainLayer(tf.keras.layers.Layer):
-    config_class = TransfoXLConfig
-
     def __init__(self, config, **kwargs):
-        super().__init__(**kwargs)
+        super(TFTransfoXLMainLayer, self).__init__(**kwargs)
         self.output_attentions = config.output_attentions
         self.output_hidden_states = config.output_hidden_states
 
-        self.n_token = config.vocab_size
+        self.n_token = config.n_token
 
         self.d_embed = config.d_embed
         self.d_model = config.d_model
@@ -396,15 +361,8 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
         self.d_head = config.d_head
         self.untie_r = config.untie_r
 
-        self.word_emb = TFAdaptiveEmbedding(
-            config.vocab_size,
-            config.d_embed,
-            config.d_model,
-            config.cutoffs,
-            div_val=config.div_val,
-            init_std=config.init_std,
-            name="word_emb",
-        )
+        self.word_emb = TFAdaptiveEmbedding(config.n_token, config.d_embed, config.d_model, config.cutoffs, 
+                                            div_val=config.div_val, init_std=config.init_std, name='word_emb')
 
         self.drop = tf.keras.layers.Dropout(config.dropout)
 
@@ -418,48 +376,42 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
         self.attn_type = config.attn_type
 
         self.layers = []
-        if config.attn_type == 0:  # the default attention
+        if config.attn_type == 0: # the default attention
             for i in range(config.n_layer):
                 self.layers.append(
                     TFRelPartialLearnableDecoderLayer(
-                        config.n_head,
-                        config.d_model,
-                        config.d_head,
-                        config.d_inner,
-                        config.dropout,
-                        tgt_len=config.tgt_len,
-                        ext_len=config.ext_len,
-                        mem_len=config.mem_len,
-                        dropatt=config.dropatt,
-                        pre_lnorm=config.pre_lnorm,
+                        config.n_head, config.d_model, config.d_head, config.d_inner, config.dropout,
+                        tgt_len=config.tgt_len, ext_len=config.ext_len, mem_len=config.mem_len,
+                        dropatt=config.dropatt, pre_lnorm=config.pre_lnorm,
                         r_w_bias=None if self.untie_r else self.r_w_bias,
                         r_r_bias=None if self.untie_r else self.r_r_bias,
                         output_attentions=self.output_attentions,
                         layer_norm_epsilon=config.layer_norm_epsilon,
                         init_std=config.init_std,
-                        name="layers_._{}".format(i),
-                    )
+                        name='layers_._{}'.format(i))
                 )
-        else:  # learnable embeddings and absolute embeddings
+        else: # learnable embeddings and absolute embeddings
             raise NotImplementedError  # Removed these to avoid maintaining dead code - They are not used in our pretrained checkpoint
 
         self.same_length = config.same_length
         self.clamp_len = config.clamp_len
 
-        if self.attn_type == 0:  # default attention
-            self.pos_emb = TFPositionalEmbedding(self.d_model, name="pos_emb")
-        else:  # learnable embeddings and absolute embeddings
+        if self.attn_type == 0: # default attention
+            self.pos_emb = TFPositionalEmbedding(self.d_model, name='pos_emb')
+        else: # learnable embeddings and absolute embeddings
             raise NotImplementedError  # Removed these to avoid maintaining dead code - They are not used in our pretrained checkpoint
 
     def build(self, input_shape):
         if not self.untie_r:
-            self.r_w_bias = self.add_weight(
-                shape=(self.n_head, self.d_head), initializer="zeros", trainable=True, name="r_w_bias"
-            )
-            self.r_r_bias = self.add_weight(
-                shape=(self.n_head, self.d_head), initializer="zeros", trainable=True, name="r_r_bias"
-            )
-        super().build(input_shape)
+            self.r_w_bias = self.add_weight(shape=(self.n_head, self.d_head),
+                                            initializer='zeros',
+                                            trainable=True,
+                                            name='r_w_bias')
+            self.r_r_bias = self.add_weight(shape=(self.n_head, self.d_head),
+                                            initializer='zeros',
+                                            trainable=True,
+                                            name='r_r_bias')
+        super(TFTransfoXLMainLayer, self).build(input_shape)
 
     def get_input_embeddings(self):
         return self.word_emb
@@ -489,13 +441,12 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
         else:
             return None
 
-    def _update_mems(self, hids, mems, mlen, qlen):
+    def _update_mems(self, hids, mems, qlen, mlen):
         # does not deal with None
-        if mems is None:
-            return None
+        if mems is None: return None
 
         # mems is not None
-        assert len(hids) == len(mems), "len(hids) != len(mems)"
+        assert len(hids) == len(mems), 'len(hids) != len(mems)'
 
         # There are `mlen + qlen` steps that can be cached into mems
         # For the next step, the last `ext_len` of the `qlen` tokens
@@ -520,11 +471,11 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
             head_mask = inputs[2] if len(inputs) > 2 else head_mask
             inputs_embeds = inputs[3] if len(inputs) > 3 else inputs_embeds
             assert len(inputs) <= 4, "Too many inputs."
-        elif isinstance(inputs, (dict, BatchEncoding)):
-            input_ids = inputs.get("input_ids")
-            mems = inputs.get("mems", mems)
-            head_mask = inputs.get("head_mask", head_mask)
-            inputs_embeds = inputs.get("inputs_embeds", inputs_embeds)
+        elif isinstance(inputs, dict):
+            input_ids = inputs.get('input_ids')
+            mems = inputs.get('mems', mems)
+            head_mask = inputs.get('head_mask', head_mask)
+            inputs_embeds = inputs.get('inputs_embeds', inputs_embeds)
             assert len(inputs) <= 4, "Too many inputs."
         else:
             input_ids = inputs
@@ -550,7 +501,7 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
         # attention_probs has shape bsz x n_heads x N x N
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads] (a head_mask for each layer)
         # and head_mask is converted to shape [num_hidden_layers x qlen x klen x bsz x n_head]
-        if head_mask is not None:
+        if not head_mask is None:
             raise NotImplementedError
         else:
             head_mask = [None] * self.n_layer
@@ -570,7 +521,8 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
         dec_attn_mask = tf.concat([attn_mask_pad, mask_u - mask_dia], 1)
         if self.same_length:
             mask_l = tf.linalg.band_part(attn_mask, -1, 0)
-            dec_attn_mask = tf.concat([dec_attn_mask[:, :qlen] + mask_l - mask_dia, dec_attn_mask[:, qlen:]], 1)
+            dec_attn_mask = tf.concat([dec_attn_mask[:, :qlen] + mask_l - mask_dia,
+                                       dec_attn_mask[:, qlen:]], 1)
         # ::: PyTorch masking code for reference :::
         # if self.same_length:
         #     all_ones = word_emb.new_ones((qlen, klen), dtype=torch.uint8)
@@ -587,8 +539,8 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
 
         hids = []
         attentions = []
-        if self.attn_type == 0:  # default
-            pos_seq = tf.range(klen - 1, -1, -1.0)
+        if self.attn_type == 0: # default
+            pos_seq = tf.range(klen-1, -1, -1.0)
             if self.clamp_len > 0:
                 pos_seq = tf.minimum(pos_seq, self.clamp_len)
             pos_emb = self.pos_emb(pos_seq)
@@ -599,11 +551,12 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
             for i, layer in enumerate(self.layers):
                 hids.append(core_out)
                 mems_i = None if mems is None else mems[i]
-                layer_outputs = layer([core_out, pos_emb, dec_attn_mask, mems_i, head_mask[i]], training=training)
+                layer_outputs = layer([core_out, pos_emb, dec_attn_mask,
+                                       mems_i, head_mask[i]], training=training)
                 core_out = layer_outputs[0]
                 if self.output_attentions:
                     attentions.append(layer_outputs[1])
-        else:  # learnable embeddings and absolute embeddings
+        else: # learnable embeddings and absolute embeddings
             raise NotImplementedError  # Removed these to avoid maintaining dead code - They are not used in our pretrained checkpoint
 
         core_out = self.drop(core_out, training=training)
@@ -626,34 +579,44 @@ class TFTransfoXLMainLayer(tf.keras.layers.Layer):
 
 class TFTransfoXLPreTrainedModel(TFPreTrainedModel):
     """ An abstract class to handle weights initialization and
-        a simple interface for downloading and loading pretrained models.
+        a simple interface for dowloading and loading pretrained models.
     """
-
     config_class = TransfoXLConfig
     pretrained_model_archive_map = TF_TRANSFO_XL_PRETRAINED_MODEL_ARCHIVE_MAP
     base_model_prefix = "transformer"
 
 
-TRANSFO_XL_START_DOCSTRING = r"""
+TRANSFO_XL_START_DOCSTRING = r"""    The Transformer-XL model was proposed in
+    `Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context`_
+    by Zihang Dai*, Zhilin Yang*, Yiming Yang, Jaime Carbonell, Quoc V. Le, Ruslan Salakhutdinov.
+    It's a causal (uni-directional) transformer with relative positioning (sinusoïdal) embeddings which can reuse
+    previously computed hidden-states to attend to longer context (memory).
+    This model also uses adaptive softmax inputs and outputs (tied).
 
-    .. note::
+    This model is a tf.keras.Model `tf.keras.Model`_ sub-class. Use it as a regular TF 2.0 Keras Model and
+    refer to the TF 2.0 documentation for all matter related to general usage and behavior.
 
+    .. _`Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context`:
+        https://arxiv.org/abs/1901.02860
+
+    .. _`tf.keras.Model`:
+        https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/keras/Model
+
+    Note on the model inputs:
         TF 2.0 models accepts two formats as inputs:
 
             - having all inputs as keyword arguments (like PyTorch models), or
             - having all inputs as a list, tuple or dict in the first positional arguments.
 
-        This second option is useful when using :obj:`tf.keras.Model.fit()` method which currently requires having
-        all the tensors in the first argument of the model call function: :obj:`model(inputs)`.
+        This second option is usefull when using `tf.keras.Model.fit()` method which currently requires having all the tensors in the first argument of the model call function: `model(inputs)`.
 
-        If you choose this second option, there are three possibilities you can use to gather all the input Tensors
-        in the first positional argument :
+        If you choose this second option, there are three possibilities you can use to gather all the input Tensors in the first positional argument :
 
-        - a single Tensor with input_ids only and nothing else: :obj:`model(inputs_ids)`
+        - a single Tensor with input_ids only and nothing else: `model(inputs_ids)
         - a list of varying length with one or several input Tensors IN THE ORDER given in the docstring:
-          :obj:`model([input_ids, attention_mask])` or :obj:`model([input_ids, attention_mask, token_type_ids])`
-        - a dictionary with one or several input Tensors associated to the input names given in the docstring:
-          :obj:`model({'input_ids': input_ids, 'token_type_ids': token_type_ids})`
+            `model([input_ids, attention_mask])` or `model([input_ids, attention_mask, token_type_ids])`
+        - a dictionary with one or several input Tensors associaed to the input names given in the docstring:
+            `model({'input_ids': input_ids, 'token_type_ids': token_type_ids})`
 
     Parameters:
         config (:class:`~transformers.TransfoXLConfig`): Model configuration class with all the parameters of the model.
@@ -662,61 +625,46 @@ TRANSFO_XL_START_DOCSTRING = r"""
 """
 
 TRANSFO_XL_INPUTS_DOCSTRING = r"""
-    Args:
-        input_ids (:obj:`tf.Tensor` or :obj:`Numpy array` of shape :obj:`(batch_size, sequence_length)`):
+    Inputs:
+        **input_ids**: ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length)``:
             Indices of input sequence tokens in the vocabulary.
-
+            Transformer-XL is a model with relative position embeddings so you can either pad the inputs on
+            the right or on the left.
             Indices can be obtained using :class:`transformers.TransfoXLTokenizer`.
             See :func:`transformers.PreTrainedTokenizer.encode` and
-            :func:`transformers.PreTrainedTokenizer.encode_plus` for details.
-
-            `What are input IDs? <../glossary.html#input-ids>`__
-        mems (:obj:`List[tf.Tensor]` of length :obj:`config.n_layers`):
-            Contains pre-computed hidden-states (key and values in the attention blocks) as computed by the model
-            (see `mems` output below). Can be used to speed up sequential decoding. The token ids which have their mems
-            given to this model should not be passed as input ids as they have already been computed.
-        head_mask (:obj:`tf.Tensor` or :obj:`Numpy array` of shape :obj:`(num_heads,)` or :obj:`(num_layers, num_heads)`, `optional`, defaults to :obj:`None`):
+            :func:`transformers.PreTrainedTokenizer.convert_tokens_to_ids` for details.
+        **mems**: (`optional`)
+            list of ``Numpy array`` or ``tf.Tensor`` (one for each layer):
+            that contains pre-computed hidden-states (key and values in the attention blocks) as computed by the model
+            (see `mems` output below). Can be used to speed up sequential decoding and attend to longer context.
+        **head_mask**: (`optional`) ``Numpy array`` or ``tf.Tensor`` of shape ``(num_heads,)`` or ``(num_layers, num_heads)``:
             Mask to nullify selected heads of the self-attention modules.
             Mask values selected in ``[0, 1]``:
-            :obj:`1` indicates the head is **not masked**, :obj:`0` indicates the head is **masked**.
-        input_embeds (:obj:`tf.Tensor` or :obj:`Numpy array` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`, defaults to :obj:`None`):
-            Optionally, instead of passing :obj:`input_ids` you can choose to directly pass an embedded representation.
+            ``1`` indicates the head is **not masked**, ``0`` indicates the head is **masked**.
+        **inputs_embeds**: (`optional`) ``Numpy array`` or ``tf.Tensor`` of shape ``(batch_size, sequence_length, embedding_dim)``:
+            Optionally, instead of passing ``input_ids`` you can choose to directly pass an embedded representation.
             This is useful if you want more control over how to convert `input_ids` indices into associated vectors
             than the model's internal embedding lookup matrix.
 """
 
-
-@add_start_docstrings(
-    "The bare Bert Model transformer outputing raw hidden-states without any specific head on top.",
-    TRANSFO_XL_START_DOCSTRING,
-)
+@add_start_docstrings("The bare Bert Model transformer outputing raw hidden-states without any specific head on top.",
+                      TRANSFO_XL_START_DOCSTRING, TRANSFO_XL_INPUTS_DOCSTRING)
 class TFTransfoXLModel(TFTransfoXLPreTrainedModel):
-    def __init__(self, config, *inputs, **kwargs):
-        super().__init__(config, *inputs, **kwargs)
-        self.transformer = TFTransfoXLMainLayer(config, name="transformer")
-
-    @add_start_docstrings_to_callable(TRANSFO_XL_INPUTS_DOCSTRING)
-    def call(self, inputs, **kwargs):
-        r"""
-    Return:
-        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.TransfoXLConfig`) and inputs:
-        last_hidden_state (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`):
+    r"""
+    Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
+        **last_hidden_state**: ``tf.Tensor`` of shape ``(batch_size, sequence_length, hidden_size)``
             Sequence of hidden-states at the last layer of the model.
-        mems (:obj:`List[tf.Tensor]` of length :obj:`config.n_layers`):
-            Contains pre-computed hidden-states (key and values in the attention blocks).
-            Can be used (see `mems` input) to speed up sequential decoding. The token ids which have their past given to this model
-            should not be passed as input ids as they have already been computed.
-        hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_hidden_states=True``):
-            Tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
+        **mems**:
+            list of ``tf.Tensor`` (one for each layer):
+            that contains pre-computed hidden-states (key and values in the attention blocks) as computed by the model
+            (see `mems` input above). Can be used to speed up sequential decoding and attend to longer context.
+        **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
+            list of ``tf.Tensor`` (one for the output of each layer + the output of the embeddings)
+            of shape ``(batch_size, sequence_length, hidden_size)``:
             Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
-            Tuple of :obj:`tf.Tensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
+        **attentions**: (`optional`, returned when ``config.output_attentions=True``)
+            list of ``tf.Tensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
 
     Examples::
 
@@ -725,87 +673,40 @@ class TFTransfoXLModel(TFTransfoXLPreTrainedModel):
 
         tokenizer = TransfoXLTokenizer.from_pretrained('transfo-xl-wt103')
         model = TFTransfoXLModel.from_pretrained('transfo-xl-wt103')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
+        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
         outputs = model(input_ids)
         last_hidden_states, mems = outputs[:2]
 
-        """
+    """
+    def __init__(self, config, *inputs, **kwargs):
+        super(TFTransfoXLModel, self).__init__(config, *inputs, **kwargs)
+        self.transformer = TFTransfoXLMainLayer(config, name='transformer')
+
+    def call(self, inputs, **kwargs):
         outputs = self.transformer(inputs, **kwargs)
         return outputs
 
 
-class TFTransfoXLLMHead(tf.keras.layers.Layer):
-    def __init__(self, config, input_embeddings, **kwargs):
-        super().__init__(**kwargs)
-        self.vocab_size = config.vocab_size
-
-        # The output weights are the same as the input embeddings, but there is
-        # an output-only bias for each token.
-        self.input_embeddings = input_embeddings
-
-    def build(self, input_shape):
-        self.bias = self.add_weight(shape=(self.vocab_size,), initializer="zeros", trainable=True, name="bias")
-        super().build(input_shape)
-
-    def call(self, hidden_states):
-        hidden_states = self.input_embeddings(hidden_states, mode="linear")
-        hidden_states = hidden_states + self.bias
-        return hidden_states
-
-
-@add_start_docstrings(
-    """The Transformer-XL Model with a language modeling head on top
+@add_start_docstrings("""The Transformer-XL Model with a language modeling head on top
     (adaptive softmax with weights tied to the adaptive input embeddings)""",
-    TRANSFO_XL_START_DOCSTRING,
-)
+    TRANSFO_XL_START_DOCSTRING, TRANSFO_XL_INPUTS_DOCSTRING)
 class TFTransfoXLLMHeadModel(TFTransfoXLPreTrainedModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.transformer = TFTransfoXLMainLayer(config, name="transformer")
-        self.sample_softmax = config.sample_softmax
-        assert (
-            self.sample_softmax <= 0
-        ), "Sampling from the softmax is not implemented yet. Please look at issue: #3310: https://github.com/huggingface/transformers/issues/3310"
-
-        self.crit = TFAdaptiveSoftmaxMask(
-            config.vocab_size, config.d_embed, config.d_model, config.cutoffs, div_val=config.div_val, name="crit"
-        )
-
-    def get_output_embeddings(self):
-        """ Double-check if you are using adaptive softmax.
-        """
-        if len(self.crit.out_layers) > 0:
-            return self.crit.out_layers[-1]
-        return None
-
-    def reset_length(self, tgt_len, ext_len, mem_len):
-        self.transformer.reset_length(tgt_len, ext_len, mem_len)
-
-    def init_mems(self, bsz):
-        return self.transformer.init_mems(bsz)
-
-    @add_start_docstrings_to_callable(TRANSFO_XL_INPUTS_DOCSTRING)
-    def call(self, inputs, mems=None, head_mask=None, inputs_embeds=None, labels=None, training=False):
-        r"""
-    Return:
-        :obj:`tuple(tf.Tensor)` comprising various elements depending on the configuration (:class:`~transformers.TransfoXLConfig`) and inputs:
-        prediction_scores (:obj:`tf.Tensor` of shape :obj:`(batch_size, sequence_length, config.vocab_size)`):
+    r"""
+    Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
+        **prediction_scores**: ``None`` if ``lm_labels`` is provided else ``tf.Tensor`` of shape ``(batch_size, sequence_length, config.vocab_size)``
             Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
-        mems (:obj:`List[tf.Tensor]` of length :obj:`config.n_layers`):
-            Contains pre-computed hidden-states (key and values in the attention blocks).
-            Can be used (see `past` input) to speed up sequential decoding. The token ids which have their past given to this model
-            should not be passed as input ids as they have already been computed.
-        hidden_states (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_hidden_states=True``):
-            Tuple of :obj:`tf.Tensor` (one for the output of the embeddings + one for the output of each layer)
-            of shape :obj:`(batch_size, sequence_length, hidden_size)`.
-
+            We don't output them when the loss is computed to speedup adaptive softmax decoding.
+        **mems**:
+            list of ``tf.Tensor`` (one for each layer):
+            that contains pre-computed hidden-states (key and values in the attention blocks) as computed by the model
+            (see `mems` input above). Can be used to speed up sequential decoding and attend to longer context.
+        **hidden_states**: (`optional`, returned when ``config.output_hidden_states=True``)
+            list of ``tf.Tensor`` (one for the output of each layer + the output of the embeddings)
+            of shape ``(batch_size, sequence_length, hidden_size)``:
             Hidden-states of the model at the output of each layer plus the initial embedding outputs.
-        attentions (:obj:`tuple(tf.Tensor)`, `optional`, returned when ``config.output_attentions=True``):
-            Tuple of :obj:`tf.Tensor` (one for each layer) of shape
-            :obj:`(batch_size, num_heads, sequence_length, sequence_length)`.
-
-            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
-            heads.
+        **attentions**: (`optional`, returned when ``config.output_attentions=True``)
+            list of ``tf.Tensor`` (one for each layer) of shape ``(batch_size, num_heads, sequence_length, sequence_length)``:
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
 
     Examples::
 
@@ -814,11 +715,30 @@ class TFTransfoXLLMHeadModel(TFTransfoXLPreTrainedModel):
 
         tokenizer = TransfoXLTokenizer.from_pretrained('transfo-xl-wt103')
         model = TFTransfoXLLMHeadModel.from_pretrained('transfo-xl-wt103')
-        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute", add_special_tokens=True))[None, :]  # Batch size 1
+        input_ids = tf.constant(tokenizer.encode("Hello, my dog is cute"))[None, :]  # Batch size 1
         outputs = model(input_ids)
         prediction_scores, mems = outputs[:2]
 
-        """
+    """
+    def __init__(self, config):
+        super(TFTransfoXLLMHeadModel, self).__init__(config)
+        self.transformer = TFTransfoXLMainLayer(config, name='transformer')
+        self.sample_softmax = config.sample_softmax
+        # use sampled softmax
+        if config.sample_softmax > 0:
+            raise NotImplementedError
+        # use adaptive softmax (including standard softmax)
+        else:
+            self.crit = TFAdaptiveSoftmaxMask(config.n_token, config.d_embed, config.d_model, 
+                                              config.cutoffs, div_val=config.div_val, name='crit')
+
+    def reset_length(self, tgt_len, ext_len, mem_len):
+        self.transformer.reset_length(tgt_len, ext_len, mem_len)
+
+    def init_mems(self, bsz):
+        return self.transformer.init_mems(bsz)
+
+    def call(self, inputs, mems=None, head_mask=None, inputs_embeds=None, labels=None, training=False):
         if isinstance(inputs, (tuple, list)):
             input_ids = inputs[0]
             mems = inputs[1] if len(inputs) > 1 else mems
@@ -827,11 +747,11 @@ class TFTransfoXLLMHeadModel(TFTransfoXLPreTrainedModel):
             labels = inputs[4] if len(inputs) > 4 else labels
             assert len(inputs) <= 5, "Too many inputs."
         elif isinstance(inputs, dict):
-            input_ids = inputs.get("input_ids")
-            mems = inputs.get("mems", mems)
-            head_mask = inputs.get("head_mask", head_mask)
-            inputs_embeds = inputs.get("inputs_embeds", inputs_embeds)
-            labels = inputs.get("labels", labels)
+            input_ids = inputs.get('input_ids')
+            mems = inputs.get('mems', mems)
+            head_mask = inputs.get('head_mask', head_mask)
+            inputs_embeds = inputs.get('inputs_embeds', inputs_embeds)
+            labels = inputs.get('labels', labels)
             assert len(inputs) <= 5, "Too many inputs."
         else:
             input_ids = inputs
@@ -846,17 +766,12 @@ class TFTransfoXLLMHeadModel(TFTransfoXLPreTrainedModel):
         last_hidden = transformer_outputs[0]
         pred_hid = last_hidden[:, -tgt_len:]
         outputs = transformer_outputs[1:]
-
-        softmax_output = self.crit([pred_hid, labels], training=training)
-        outputs = [softmax_output] + outputs
+        if self.sample_softmax > 0 and training:
+            raise NotImplementedError
+        else:
+            # pred_hid = tf.reshape(pred_hid, (-1, shape_list(pred_hid)[-1]))
+            softmax_output = self.crit([pred_hid, labels], training=training)
+            # softmax_output = tf.reshape(softmax_output, (bsz, tgt_len, -1))
+            outputs = [softmax_output] + outputs
 
         return outputs  # logits, new_mems, (all hidden states), (all attentions)
-
-    def prepare_inputs_for_generation(self, inputs, past, **model_kwargs):
-        inputs = {"inputs": inputs}
-
-        # if past is defined in model kwargs then use it for faster decoding
-        if past:
-            inputs["mems"] = past
-
-        return inputs

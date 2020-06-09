@@ -485,9 +485,9 @@ def main():
     # _, _, tokenizer_class = MODEL_CLASSES['bert']
     # config = config_class.from_pretrained(args.config_name if args.config_name else args.model_name_or_path,
                                         #   cache_dir=args.cache_dir if args.cache_dir else None)
-    tokenizer = BertTokenizer.from_pretrained('wptoux/albert-chinese-large-qa')
+    tokenizer = BertTokenizer.from_pretrained('src/albert-chinese-large-qa')
     
-    model = AlbertForQuestionAnswering.from_pretrained('wptoux/albert-chinese-large-qa')
+    model = AlbertForQuestionAnswering.from_pretrained('src/albert-chinese-large-qa')
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab

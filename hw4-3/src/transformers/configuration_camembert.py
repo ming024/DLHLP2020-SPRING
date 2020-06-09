@@ -15,26 +15,19 @@
 # limitations under the License.
 """ CamemBERT configuration """
 
+from __future__ import (absolute_import, division, print_function,
+                        unicode_literals)
 
 import logging
 
 from .configuration_roberta import RobertaConfig
 
-
 logger = logging.getLogger(__name__)
 
 CAMEMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "camembert-base": "https://s3.amazonaws.com/models.huggingface.co/bert/camembert-base-config.json",
-    "umberto-commoncrawl-cased-v1": "https://s3.amazonaws.com/models.huggingface.co/bert/Musixmatch/umberto-commoncrawl-cased-v1/config.json",
-    "umberto-wikipedia-uncased-v1": "https://s3.amazonaws.com/models.huggingface.co/bert/Musixmatch/umberto-wikipedia-uncased-v1/config.json",
+    'camembert-base': "https://s3.amazonaws.com/models.huggingface.co/bert/camembert-base-config.json",
 }
 
 
 class CamembertConfig(RobertaConfig):
-    """
-    This class overrides :class:`~transformers.RobertaConfig`. Please check the
-    superclass for the appropriate documentation alongside usage examples.
-    """
-
     pretrained_config_archive_map = CAMEMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP
-    model_type = "camembert"
